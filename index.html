@@ -1,0 +1,1077 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>医薬品輸入情報システム管理</title>
+<style>
+  :root{
+    --paper:#F1F3F5; --sheet:#FFFFFF; --ink:#15202B; --muted:#5D6D7B;
+    --rule:#D2DAE1; --rule-soft:#E6EBEF;
+    --seal:#B23A2E; --customs:#1F4E79; --done:#1B6E52; --warn:#9A6A12;
+    --warn-bg:#FBF3E0; --seal-bg:#FBEDEB; --done-bg:#E8F3EE;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic Medium",system-ui,sans-serif;
+    font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .num{font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  button{font:inherit;color:inherit;cursor:pointer}
+  input,select,textarea{font:inherit;color:inherit}
+
+  header.top{background:var(--customs);color:#fff;padding:10px 20px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header.top h1{font-size:15px;margin:0;font-weight:700;letter-spacing:.04em}
+  header.top .sub{font-size:12px;opacity:.75}
+  header.top .lockstate{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
+  .lockdot{width:8px;height:8px;border-radius:50%;background:#E8B84B}
+  .lockdot.on{background:#5FD3A0}
+  .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.45);color:#fff;padding:3px 10px;border-radius:2px}
+  .btn-ghost:hover{background:rgba(255,255,255,.12)}
+
+  nav.tabs{background:var(--sheet);border-bottom:1px solid var(--rule);display:flex;padding:0 12px;overflow-x:auto}
+  nav.tabs button{background:none;border:none;padding:11px 16px;border-bottom:2px solid transparent;color:var(--muted);white-space:nowrap;font-weight:500}
+  nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--seal);font-weight:700}
+
+  main{padding:20px;max-width:1240px;margin:0 auto}
+  .panel{background:var(--sheet);border:1px solid var(--rule);margin-bottom:18px;overflow-x:auto}
+  .panel > h2{margin:0;padding:10px 14px;font-size:13px;font-weight:700;border-bottom:1px solid var(--rule-soft);display:flex;align-items:center;gap:10px}
+  .panel > h2 .count{color:var(--muted);font-weight:400}
+  .panel .body{padding:14px}
+
+  .board{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px}
+  .stack{background:var(--sheet);border:1px solid var(--rule);border-top:3px solid var(--muted)}
+  .stack.seal{border-top-color:var(--seal)}
+  .stack.warn{border-top-color:var(--warn)}
+  .stack.customs{border-top-color:var(--customs)}
+  .stack h3{margin:0;padding:10px 14px 4px;font-size:13px}
+  .stack .n{padding:0 14px 10px;font-size:26px;font-weight:700;line-height:1}
+  .stack ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule-soft)}
+  .stack li{padding:8px 14px;border-bottom:1px solid var(--rule-soft);font-size:13px;display:flex;gap:8px;align-items:baseline}
+  .stack li:last-child{border-bottom:none}
+  .stack li .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stack li button{background:none;border:none;padding:0;text-decoration:underline;color:var(--customs)}
+  .empty{padding:14px;color:var(--muted);font-size:13px}
+
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+  tbody tr:hover{background:#F8FAFB}
+  tbody tr.clickable{cursor:pointer}
+  .tname{font-weight:600}
+  .tsub{color:var(--muted);font-size:12px}
+
+  .tag{display:inline-block;padding:1px 7px;border-radius:2px;font-size:12px;white-space:nowrap}
+  .tag.seal{background:var(--seal-bg);color:var(--seal)}
+  .tag.warn{background:var(--warn-bg);color:var(--warn)}
+  .tag.done{background:var(--done-bg);color:var(--done)}
+  .tag.flat{background:#EDF1F4;color:var(--muted)}
+
+  .toolbar{display:flex;gap:8px;padding:12px 14px;border-bottom:1px solid var(--rule-soft);flex-wrap:wrap;align-items:center}
+  .toolbar input[type=search],.toolbar select{border:1px solid var(--rule);background:#fff;padding:5px 9px;border-radius:2px}
+  .toolbar input[type=search]{flex:1;min-width:180px}
+  .btn{background:var(--customs);color:#fff;border:1px solid var(--customs);padding:5px 13px;border-radius:2px;font-weight:600}
+  .btn:hover{background:#183D5E}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sub{background:#fff;color:var(--customs)}
+  .btn.sub:hover{background:#EDF3F8}
+  .btn.danger{background:#fff;color:var(--seal);border-color:var(--rule)}
+
+  .scrim{position:fixed;inset:0;background:rgba(21,32,43,.4);display:none}
+  .scrim.open{display:block}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,100%);background:var(--sheet);
+    border-left:1px solid var(--rule);transform:translateX(100%);transition:transform .18s ease-out;
+    display:flex;flex-direction:column;z-index:10}
+  .drawer.open{transform:none}
+  @media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+  .drawer header{padding:12px 16px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:10px}
+  .drawer header h2{margin:0;font-size:15px;flex:1}
+  .drawer .scroll{overflow:auto;padding:16px;flex:1}
+  .drawer footer{padding:12px 16px;border-top:1px solid var(--rule);display:flex;gap:8px}
+
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+  .field input,.field select,.field textarea{width:100%;border:1px solid var(--rule);padding:6px 9px;border-radius:2px;background:#fff}
+  .field textarea{min-height:64px;resize:vertical}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:560px){.row2,.row3{grid-template-columns:1fr}}
+  fieldset{border:1px solid var(--rule);padding:12px;margin:0 0 16px}
+  legend{font-size:12px;color:var(--muted);padding:0 6px}
+  .cred{display:flex;gap:8px;align-items:center}
+  .cred input{flex:1}
+
+  .doclist{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule-soft)}
+  .doclist li{padding:9px 0;border-bottom:1px solid var(--rule-soft)}
+  .doclist .drow{display:flex;gap:10px;align-items:center}
+  .doclist .dname{flex:1}
+  .doclist input[type=text]{width:100%;border:1px solid var(--rule);padding:4px 8px;border-radius:2px;margin-top:5px}
+  .chk{width:16px;height:16px;accent-color:var(--customs)}
+
+  .att{display:flex;gap:6px;align-items:center;font-size:12px;flex-wrap:wrap}
+  .att .fname{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+  .att button{background:none;border:none;padding:0;text-decoration:underline;color:var(--customs);font-size:12px}
+  .att button.rm{color:var(--seal)}
+  .att .pending{color:var(--warn)}
+  .attbox{border:1px dashed var(--rule);padding:10px;background:#FAFBFC}
+
+  dialog{border:1px solid var(--rule);padding:0;width:min(420px,92vw);background:var(--sheet)}
+  dialog::backdrop{background:rgba(21,32,43,.45)}
+  dialog .dbody{padding:18px}
+  dialog h3{margin:0 0 8px;font-size:15px}
+  dialog p{margin:0 0 12px;color:var(--muted);font-size:13px}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:9px 18px;border-radius:2px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:120}
+  .toast.show{opacity:1}
+
+  .gate{position:fixed;inset:0;background:var(--paper);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+  .gate[hidden]{display:none}
+  .gatecard{width:min(430px,100%);background:var(--sheet);border:1px solid var(--rule)}
+  .gatehead{background:var(--customs);color:#fff;padding:18px 20px}
+  .gatehead h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.03em}
+  .gatehead p{margin:6px 0 0;font-size:13px;opacity:.8}
+  .gatebody{padding:20px}
+  .gatebody .err{color:var(--seal);margin:0 0 12px;font-size:13px}
+</style>
+
+<header class="top" id="topbar" hidden>
+  <h1>医薬品輸入情報システム管理</h1>
+  <span class="sub">医療機関アカウント・薬事申請案件・書類</span>
+  <span class="lockstate">
+    <span class="lockdot" id="lockdot"></span>
+    <span id="locklabel">保管庫は施錠中</span>
+    <button class="btn-ghost" id="lockbtn">解錠する</button>
+    <span id="whoami" class="sub"></span>
+    <button class="btn-ghost" id="signout">ログアウト</button>
+  </span>
+</header>
+
+<nav class="tabs" role="tablist" id="tabs" hidden>
+  <button role="tab" data-view="home" aria-selected="true">今日の状況</button>
+  <button role="tab" data-view="clinics" aria-selected="false">医療機関</button>
+  <button role="tab" data-view="cases" aria-selected="false">申請案件</button>
+  <button role="tab" data-view="docs" aria-selected="false">書類の抜け</button>
+  <button role="tab" data-view="users" aria-selected="false" id="tabUsers" hidden>利用者</button>
+</nav>
+
+<div class="gate" id="gate">
+  <form class="gatecard" id="gateForm">
+    <div class="gatehead">
+      <h1>医薬品輸入情報システム管理</h1>
+      <p id="gateLead">読み込み中…</p>
+    </div>
+    <div class="gatebody">
+      <div id="setupFields" hidden>
+        <div class="field"><label for="c_url">プロジェクトURL</label>
+          <input id="c_url" class="num" value="https://brakbgqyvquelpjwuliw.supabase.co"></div>
+        <div class="field"><label for="c_key">anon キー</label>
+          <textarea id="c_key" placeholder="eyJ… で始まる長い文字列"></textarea></div>
+        <p class="tsub" style="margin:0 0 12px">Settings → API Keys の <b>anon public</b> のほうです。service_role は絶対に貼らないでください。</p>
+      </div>
+      <div id="loginFields" hidden>
+        <div class="field"><label for="g_id">メールアドレス</label>
+          <input id="g_id" type="email" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="g_pw">パスワード</label>
+          <input type="password" id="g_pw" autocomplete="current-password"></div>
+      </div>
+      <p class="err" id="g_err" hidden></p>
+      <button class="btn" id="g_go" style="width:100%;padding:8px">ログイン</button>
+      <button type="button" class="btn sub" id="g_reconf" style="width:100%;padding:6px;margin-top:8px" hidden>接続先を設定しなおす</button>
+    </div>
+  </form>
+</div>
+
+<main id="main"></main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <header>
+    <h2 id="drawerTitle"></h2>
+    <button class="btn sub" id="drawerClose">閉じる</button>
+  </header>
+  <div class="scroll" id="drawerBody"></div>
+  <footer id="drawerFoot"></footer>
+</aside>
+
+<dialog id="passDlg">
+  <div class="dbody">
+    <h3 id="passTitle">保管庫を解錠する</h3>
+    <p id="passHelp"></p>
+    <div class="field"><label for="passInput">マスターパスワード</label><input type="password" id="passInput" autocomplete="off"></div>
+    <div class="field" id="passConfirmWrap" hidden><label for="passConfirm">確認のためもう一度</label><input type="password" id="passConfirm" autocomplete="off"></div>
+    <p id="passErr" style="color:var(--seal);display:none"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn sub" id="passCancel">やめる</button>
+      <button class="btn" id="passOk">解錠する</button>
+    </div>
+  </div>
+</dialog>
+
+<input type="file" id="attPick" accept="image/*,application/pdf" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   医薬品輸入情報システム管理 — Supabase 接続版
+   ・ログイン       … Supabase Auth
+   ・データ         … PostgREST（RLSで権限を判定）
+   ・書類ファイル   … Storage（非公開バケット＋60秒の署名付きURL）
+   ・申請サイトのパスワード … ブラウザで暗号化してから保存
+   ============================================================ */
+
+const BUCKET = 'yakkan-docs';
+const MAX_FILE = 5 * 1024 * 1024;
+const IDLE_MS = 20 * 60 * 1000;
+const STATUSES = ['準備中','申請済','証明取得','通関済','納品完了'];
+const DOC_TYPES = ['委任状','医師免許写し','輸入報告書','INVOICE','PACKING LIST','AWB','薬監証明'];
+const DOC_SLUG = { '委任状':'ininjo','医師免許写し':'menkyo','輸入報告書':'hokokusho',
+                   'INVOICE':'invoice','PACKING LIST':'packing','AWB':'awb','薬監証明':'yakkan' };
+const ROLES = { admin:'管理者', member:'担当者', viewer:'閲覧のみ' };
+
+/* 接続先。GitHub Pages に置くときはこの2行だけ書き換えれば動きます。
+   anon キーは公開前提のキーで、RLS が効いている限り貼っても問題ありません。
+   service_role キーは絶対にここに書かないこと。 */
+const DEFAULT_CFG = {
+  url: 'https://brakbgqyvquelpjwuliw.supabase.co',
+  key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJyYWtiZ3F5dnF1ZWxwand1bGl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMTIyOTMsImV4cCI6MjEwMzg4ODI5M30.YSMSFggjgdeZpHapk-HUmKV4azFA96CCJDeiQTWkKBI'
+};
+let CFG = { ...DEFAULT_CFG };
+let auth = { token:null, refresh:null, uid:null, email:null };
+let me = null;                       // { id, name, role }
+let db = { clinics:[], cases:[] };
+let staffList = [];
+let vaultMeta = null, vaultKey = null;
+let view = 'home', q = '', filterStatus = 'all';
+let idleTimer = null, refreshTimer = null;
+
+const $ = s => document.querySelector(s);
+const esc = s => (s??'').toString().replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* ---------- 設定の保存（この端末だけ） ---------- */
+const mem = {};
+const local = {
+  async get(k){ if(window.storage){ try{ const r=await window.storage.get(k); return r?JSON.parse(r.value):null; }catch(e){ return null; } } return mem[k]??null; },
+  async set(k,v){ if(window.storage){ try{ await window.storage.set(k, JSON.stringify(v)); return; }catch(e){} } mem[k]=v; }
+};
+
+/* ============================================================
+   API
+   ============================================================ */
+async function call(path, {method='GET', body, headers={}, rawBody=false}={}){
+  const h = { apikey: CFG.key, Authorization: 'Bearer ' + (auth.token || CFG.key), ...headers };
+  if(!rawBody && body !== undefined) h['Content-Type'] = 'application/json';
+  const res = await fetch(CFG.url + path, {
+    method, headers: h,
+    body: body === undefined ? undefined : (rawBody ? body : JSON.stringify(body))
+  });
+  if(!res.ok){
+    let msg = res.status + '';
+    try{ const t = await res.text(); const j = JSON.parse(t);
+         msg = j.message || j.error_description || j.msg || j.error || t; }catch(e){}
+    const err = new Error(msg); err.status = res.status; throw err;
+  }
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : null;
+}
+const rest = (p, o) => call('/rest/v1/' + p, o);
+const sel  = p => rest(p);
+async function insert(table, row, prefer='return=representation'){
+  const r = await rest(table, { method:'POST', body:row, headers:{ Prefer:prefer } });
+  return Array.isArray(r) ? r[0] : r;
+}
+async function upsert(table, row){
+  const r = await rest(table, { method:'POST', body:row,
+    headers:{ Prefer:'resolution=merge-duplicates,return=representation' } });
+  return Array.isArray(r) ? r[0] : r;
+}
+const patch = (table, filter, row) =>
+  rest(`${table}?${filter}`, { method:'PATCH', body:row, headers:{ Prefer:'return=representation' } });
+const remove = (table, filter) => rest(`${table}?${filter}`, { method:'DELETE' });
+
+/* ---------- Storage ---------- */
+async function uploadFile(path, file){
+  await fetch(`${CFG.url}/storage/v1/object/${BUCKET}/${encodeURI(path)}`, {
+    method:'POST',
+    headers:{ apikey:CFG.key, Authorization:'Bearer '+auth.token, 'x-upsert':'true', 'Content-Type':file.type||'application/octet-stream' },
+    body:file
+  }).then(async r=>{ if(!r.ok) throw new Error(await r.text()); });
+  return path;
+}
+async function deleteFile(path){
+  try{
+    await fetch(`${CFG.url}/storage/v1/object/${BUCKET}/${encodeURI(path)}`, {
+      method:'DELETE', headers:{ apikey:CFG.key, Authorization:'Bearer '+auth.token }
+    });
+  }catch(e){}
+}
+async function openStored(path){
+  const r = await call(`/storage/v1/object/sign/${BUCKET}/${encodeURI(path)}`, { method:'POST', body:{ expiresIn:60 } });
+  const a = document.createElement('a');
+  a.href = CFG.url + '/storage/v1' + r.signedURL;
+  a.target = '_blank'; a.rel = 'noopener'; a.click();
+}
+
+/* ============================================================
+   暗号（申請サイトのパスワード）
+   ============================================================ */
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = { to: b => btoa(String.fromCharCode(...new Uint8Array(b))),
+              from: s => Uint8Array.from(atob(s), c => c.charCodeAt(0)) };
+async function deriveKey(pass, saltB64){
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name:'PBKDF2', salt:b64.from(saltB64), iterations:250000, hash:'SHA-256' },
+    base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+}
+async function sealText(t){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, vaultKey, enc.encode(t));
+  return { iv:b64.to(iv), ct:b64.to(ct) };
+}
+async function openText(iv, ct){
+  return dec.decode(await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64.from(iv) }, vaultKey, b64.from(ct)));
+}
+
+/* ---------- 日付 ---------- */
+const today = new Date(); today.setHours(0,0,0,0);
+const daysUntil = d => d ? Math.round((new Date(d+'T00:00:00') - today) / 86400000) : null;
+const fmt = d => d ? d.replaceAll('-','/').slice(5) : '—';
+const humanSize = n => n<1024 ? n+'B' : n<1048576 ? (n/1024).toFixed(0)+'KB' : (n/1048576).toFixed(1)+'MB';
+const canWrite = () => me && (me.role==='admin' || me.role==='member');
+const isAdmin  = () => me && me.role==='admin';
+
+/* ============================================================
+   ログイン
+   ============================================================ */
+function gateError(m){ const e=$('#g_err'); e.textContent=m; e.hidden=false; }
+
+async function boot(){
+  const saved = await local.get('yakkan:cfg');
+  CFG = (saved && saved.url && saved.key) ? saved : { ...DEFAULT_CFG };
+  if(!CFG.url || !CFG.key) return showSetup();
+  showLogin();
+}
+function showSetup(msg){
+  $('#gate').hidden = false;
+  $('#gateLead').textContent = 'まず接続先を設定します。';
+  $('#setupFields').hidden = false; $('#loginFields').hidden = true;
+  $('#g_go').textContent = '接続する'; $('#g_reconf').hidden = true;
+  $('#g_err').hidden = !msg; if(msg) gateError(msg);
+  if(CFG.url) $('#c_url').value = CFG.url;
+}
+function showLogin(msg){
+  $('#gate').hidden = false;
+  $('#gateLead').textContent = msg || 'メールアドレスとパスワードを入れてください。';
+  $('#setupFields').hidden = true; $('#loginFields').hidden = false;
+  $('#g_go').textContent = 'ログイン'; $('#g_reconf').hidden = false;
+  $('#g_err').hidden = true; $('#g_pw').value = '';
+  setTimeout(()=>$('#g_id').focus(), 50);
+}
+$('#g_reconf').addEventListener('click', ()=> showSetup());
+
+$('#gateForm').addEventListener('submit', async ev=>{
+  ev.preventDefault();
+  const go = $('#g_go'); go.disabled = true;
+  try{
+    if(!$('#setupFields').hidden){
+      const url = $('#c_url').value.trim().replace(/\/$/,'');
+      const key = $('#c_key').value.trim();
+      if(!/^https:\/\/.+\.supabase\.co$/.test(url)) return gateError('プロジェクトURLの形式が違います。');
+      if(key.length < 40) return gateError('anon キーを貼ってください。');
+      if(key.includes('service_role')) return gateError('service_role キーです。anon public のほうを使ってください。');
+      CFG = { url, key };
+      await local.set('yakkan:cfg', CFG);
+      showLogin('接続先を保存しました。ログインしてください。');
+      return;
+    }
+    const email = $('#g_id').value.trim(), password = $('#g_pw').value;
+    let res;
+    try{
+      res = await call('/auth/v1/token?grant_type=password', { method:'POST', body:{ email, password } });
+    }catch(e){
+      return gateError(/Invalid login/i.test(e.message)
+        ? 'メールアドレスかパスワードが違います。'
+        : 'ログインできませんでした（' + e.message + '）');
+    }
+    auth = { token:res.access_token, refresh:res.refresh_token, uid:res.user.id, email:res.user.email };
+
+    let rows;
+    try{ rows = await sel(`staff?id=eq.${auth.uid}&select=id,name,role`); }
+    catch(e){ return gateError('権限を確認できませんでした（' + e.message + '）'); }
+    if(!rows || !rows.length){
+      auth = { token:null, refresh:null, uid:null, email:null };
+      return gateError('このアカウントには利用権限がありません。管理者に登録を依頼してください。');
+    }
+    me = rows[0];
+    await enterApp();
+  } finally { go.disabled = false; }
+});
+
+async function enterApp(){
+  $('#gate').hidden = true;
+  $('#topbar').hidden = false; $('#tabs').hidden = false;
+  $('#whoami').textContent = `${me.name}（${ROLES[me.role]}）`;
+  $('#tabUsers').hidden = !isAdmin();
+  $('#lockbtn').hidden = !canWrite();
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(refreshToken, 45*60*1000);
+  touchIdle();
+  await loadAll();
+  view = 'home'; q=''; filterStatus='all';
+  render();
+}
+async function refreshToken(){
+  if(!auth.refresh) return;
+  try{
+    const r = await call('/auth/v1/token?grant_type=refresh_token', { method:'POST', body:{ refresh_token:auth.refresh } });
+    auth.token = r.access_token; auth.refresh = r.refresh_token;
+  }catch(e){ signOut('接続が切れました。もう一度ログインしてください。'); }
+}
+function signOut(msg){
+  auth = { token:null, refresh:null, uid:null, email:null };
+  me = null; vaultKey = null; db = { clinics:[], cases:[] };
+  clearTimeout(idleTimer); clearInterval(refreshTimer);
+  closeDrawer();
+  $('#topbar').hidden = true; $('#tabs').hidden = true; $('#main').innerHTML = '';
+  showLogin(msg);
+}
+$('#signout').addEventListener('click', ()=> signOut());
+function touchIdle(){
+  clearTimeout(idleTimer);
+  if(!me) return;
+  idleTimer = setTimeout(()=> signOut('しばらく操作がなかったのでログアウトしました。'), IDLE_MS);
+}
+['click','keydown','input'].forEach(e=> document.addEventListener(e, touchIdle));
+
+/* ============================================================
+   読み込み（DBの列名 → 画面の形）
+   ============================================================ */
+async function loadAll(){
+  const [clinics, cases] = await Promise.all([
+    sel('clinics?select=*,clinic_doctors(*),clinic_credentials(ct_password,iv),proxy_authorizations(id,granted_on,expires_on,revoked_on)&is_active=eq.true&order=name'),
+    sel('import_cases?select=*,case_documents(*)&order=arrival_plan.asc.nullslast')
+  ]);
+  db.clinics = (clinics||[]).map(c=>{
+    const d = (c.clinic_doctors && (Array.isArray(c.clinic_doctors)?c.clinic_doctors[0]:c.clinic_doctors)) || {};
+    const p = (c.proxy_authorizations||[]).filter(x=>!x.revoked_on)
+              .sort((a,b)=> (b.granted_on||'').localeCompare(a.granted_on||''))[0] || {};
+    const cr = (c.clinic_credentials && (Array.isArray(c.clinic_credentials)?c.clinic_credentials[0]:c.clinic_credentials)) || null;
+    return { id:c.id, code:c.code||'', name:c.name, pref:c.pref||'', addr:c.address||'', tel:c.phone||'',
+      contact:c.contact||'', loginId:c.login_id||'', mfa:c.mfa_route||'', note:c.note||'',
+      doctor:d.full_name||'', doctorKana:d.kana||'', doctorAddr:d.home_address||'', doctorTel:d.personal_phone||'',
+      licenseNo:d.license_no||'', licenseDate:d.licensed_on||'',
+      license: d.license_path ? { path:d.license_path, name:d.license_name||'免許証' } : null,
+      hasDoctorRow: !!d.clinic_id,
+      proxyId:p.id||null, proxyFrom:p.granted_on||'', proxyTo:p.expires_on||'',
+      cred: cr && cr.ct_password ? { ct:cr.ct_password, iv:cr.iv } : null };
+  });
+  db.cases = (cases||[]).map(k=>{
+    const docs = {};
+    DOC_TYPES.forEach(t=>{
+      const row = (k.case_documents||[]).find(x=>x.doc_type===t);
+      docs[t] = row
+        ? { ok:row.is_received !== false, ref:row.note||'', rowId:row.id,
+            file: row.file_path ? { path:row.file_path, name:row.file_name||'ファイル' } : null }
+        : { ok:false, ref:'', rowId:null, file:null };
+    });
+    return { id:k.id, no:k.case_no, clinicId:k.clinic_id, item:k.item_summary||'', origin:k.origin_country||'',
+      supplier:k.supplier||'', applied:k.applied_on||'', status:k.status, certNo:k.cert_no||'',
+      certExpiry:k.cert_expires_on||'', awb:k.awb_no||'', invoiceNo:k.invoice_no||'',
+      arrivalPlan:k.arrival_plan||'', note:k.note||'', docs };
+  });
+  if(canWrite()){
+    try{ const v = await sel('vault_meta?id=eq.1&select=*'); vaultMeta = (v&&v[0])||null; }catch(e){ vaultMeta = null; }
+  }
+  if(isAdmin()){
+    try{ staffList = await sel('staff?select=id,name,role&order=name'); }catch(e){ staffList = []; }
+  }
+  setLockUI();
+}
+
+const clinicOf = id => db.clinics.find(c=>c.id===id);
+const missingDocs = k => DOC_TYPES.filter(d=> !(k.docs?.[d]?.ok));
+const hasDoctorInfo = c => !!(c.doctor && c.doctorAddr && c.doctorTel && c.license);
+function statusTag(s){
+  const cls = (s==='納品完了'||s==='通関済') ? 'done' : s==='準備中' ? 'flat' : 'warn';
+  return `<span class="tag ${cls}">${s}</span>`;
+}
+
+/* ============================================================
+   画面
+   ============================================================ */
+function render(){
+  document.querySelectorAll('nav.tabs button').forEach(b=> b.setAttribute('aria-selected', b.dataset.view===view));
+  $('#main').innerHTML = ({home:viewHome, clinics:viewClinics, cases:viewCases, docs:viewDocs, users:viewUsers})[view]();
+  wire();
+}
+
+function viewHome(){
+  const proxySoon = db.clinics.map(c=>({c,d:daysUntil(c.proxyTo)}))
+    .filter(x=>x.d!==null && x.d<=60).sort((a,b)=>a.d-b.d);
+  const certSoon = db.cases.map(k=>({k,d:daysUntil(k.certExpiry)}))
+    .filter(x=>x.d!==null && x.d<=30 && x.k.status!=='納品完了').sort((a,b)=>a.d-b.d);
+  const lacking = db.cases.map(k=>({k,m:missingDocs(k)})).filter(x=>x.m.length && x.k.status!=='納品完了');
+  const li = (label,sub,target)=>`<li><span class="who">${label}<br><span class="tsub">${sub}</span></span><button data-open="${target}">開く</button></li>`;
+  const badDoctor = db.clinics.filter(c=>!hasDoctorInfo(c));
+
+  return `
+  <div class="board">
+    <div class="stack seal"><h3>代行権限の期限</h3><div class="n num">${proxySoon.length}</div>
+      ${proxySoon.length?`<ul>${proxySoon.map(x=>li(esc(x.c.name),
+        x.d<0?`${-x.d}日前に失効`:`あと${x.d}日（${x.c.proxyTo.replaceAll('-','/')}）`,'clinic:'+x.c.id)).join('')}</ul>`
+        :`<div class="empty">60日以内に切れるものはありません。</div>`}</div>
+    <div class="stack warn"><h3>書類が揃っていない案件</h3><div class="n num">${lacking.length}</div>
+      ${lacking.length?`<ul>${lacking.map(x=>li(`${esc(x.k.no)}　${esc(clinicOf(x.k.clinicId)?.name||'')}`,
+        `不足：${x.m.join('・')}`,'case:'+x.k.id)).join('')}</ul>`
+        :`<div class="empty">不足はありません。</div>`}</div>
+    <div class="stack customs"><h3>薬監証明の有効期限</h3><div class="n num">${certSoon.length}</div>
+      ${certSoon.length?`<ul>${certSoon.map(x=>li(`${esc(x.k.no)}　${esc(x.k.certNo)}`,
+        `あと${x.d}日で失効`,'case:'+x.k.id)).join('')}</ul>`
+        :`<div class="empty">30日以内に切れるものはありません。</div>`}</div>
+  </div>
+
+  ${badDoctor.length?`<div class="panel">
+    <h2>申請名義人の情報が揃っていない医療機関 <span class="count num">${badDoctor.length}件</span></h2>
+    <table><thead><tr><th>医療機関</th><th>医師</th><th>足りないもの</th></tr></thead><tbody>
+    ${badDoctor.map(c=>{
+      const miss=[!c.doctor&&'医師氏名',!c.doctorAddr&&'自宅住所',!c.doctorTel&&'電話番号',!c.license&&'免許証'].filter(Boolean);
+      return `<tr class="clickable" data-open="clinic:${c.id}"><td class="tname">${esc(c.name)}</td>
+        <td>${esc(c.doctor||'—')}</td><td><span class="tag seal">${miss.join('・')}</span></td></tr>`;
+    }).join('')}</tbody></table></div>`:''}
+
+  <div class="panel">
+    <h2>進行中の案件 <span class="count num">${db.cases.filter(k=>k.status!=='納品完了').length}件</span></h2>
+    ${caseTable(db.cases.filter(k=>k.status!=='納品完了'))}
+  </div>`;
+}
+
+function viewClinics(){
+  const list = db.clinics.filter(c=> !q ||
+    [c.name,c.code,c.doctor,c.doctorKana,c.loginId,c.addr,c.tel,c.doctorTel,c.licenseNo].join(' ').includes(q));
+  return `
+  <div class="panel">
+    <h2>医療機関 <span class="count num">${list.length}件</span></h2>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="医院名・コード・医師名・住所・電話で探す" value="${esc(q)}">
+      <button class="btn" data-new="clinic">医療機関を追加</button>
+    </div>
+    <table>
+      <thead><tr><th>医療機関</th><th>電話</th><th>申請名義人</th><th>免許証</th><th>ログインID</th><th>代行権限</th><th>案件</th></tr></thead>
+      <tbody>${list.map(c=>{
+        const d = daysUntil(c.proxyTo);
+        const tag = d===null||!c.proxyTo ? '<span class="tsub">未設定</span>'
+          : d<0 ? `<span class="tag seal">失効 ${c.proxyTo.replaceAll('-','/')}</span>`
+          : d<=60 ? `<span class="tag warn">あと${d}日</span>`
+          : `<span class="num tsub">${c.proxyTo.replaceAll('-','/')}まで</span>`;
+        const dr = [c.doctorAddr?'':'自宅住所', c.doctorTel?'':'電話'].filter(Boolean);
+        return `<tr class="clickable" data-open="clinic:${c.id}">
+          <td><span class="tname">${esc(c.name)}</span><br><span class="tsub num">${esc(c.code)}・${esc(c.addr||c.pref)}</span></td>
+          <td class="num">${esc(c.tel||'—')}</td>
+          <td>${esc(c.doctor||'—')}${dr.length&&canWrite()?`<br><span class="tsub" style="color:var(--seal)">${dr.join('・')}が未登録</span>`:''}</td>
+          <td>${c.license?'<span class="tag done">あり</span>':'<span class="tag seal">未登録</span>'}</td>
+          <td class="num">${esc(c.loginId)}</td>
+          <td>${tag}</td>
+          <td class="num">${db.cases.filter(k=>k.clinicId===c.id).length}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+    ${list.length?'':'<div class="empty">該当なし。検索語を変えてみてください。</div>'}
+  </div>`;
+}
+
+function caseTable(list){
+  if(!list.length) return '<div class="empty">案件がありません。</div>';
+  return `<table>
+    <thead><tr><th>案件番号</th><th>医療機関</th><th>品目</th><th>AWB / INVOICE</th><th>入荷予定</th><th>状態</th><th>書類</th></tr></thead>
+    <tbody>${list.map(k=>{
+      const m = missingDocs(k);
+      return `<tr class="clickable" data-open="case:${k.id}">
+        <td class="num tname">${esc(k.no)}</td>
+        <td>${esc(clinicOf(k.clinicId)?.name||'—')}</td>
+        <td>${esc(k.item)}<br><span class="tsub">${esc(k.origin)}</span></td>
+        <td class="num">${esc(k.awb||'—')}<br><span class="tsub num">${esc(k.invoiceNo||'—')}</span></td>
+        <td class="num">${fmt(k.arrivalPlan)}</td>
+        <td>${statusTag(k.status)}</td>
+        <td>${m.length?`<span class="tag warn">不足${m.length}</span>`:`<span class="tag done">揃い</span>`}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function viewCases(){
+  const list = db.cases.filter(k=>{
+    const hay = [k.no,k.item,k.awb,k.invoiceNo,k.certNo,clinicOf(k.clinicId)?.name||''].join(' ');
+    return (!q || hay.includes(q)) && (filterStatus==='all' || k.status===filterStatus);
+  });
+  return `
+  <div class="panel">
+    <h2>申請案件 <span class="count num">${list.length}件</span></h2>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="案件番号・AWB・INVOICE・証明番号で探す" value="${esc(q)}">
+      <select id="fstatus"><option value="all">すべての状態</option>
+        ${STATUSES.map(s=>`<option ${filterStatus===s?'selected':''}>${s}</option>`).join('')}</select>
+      <button class="btn" data-new="case">案件を追加</button>
+      <button class="btn sub" id="exportCsv">CSVで書き出す</button>
+    </div>
+    ${caseTable(list)}
+  </div>`;
+}
+
+function viewDocs(){
+  const rows = [];
+  db.cases.forEach(k=>{ if(k.status!=='納品完了') missingDocs(k).forEach(d=> rows.push({k,d})); });
+  return `
+  <div class="panel">
+    <h2>集めきれていない書類 <span class="count num">${rows.length}件</span></h2>
+    ${rows.length?`<table><thead><tr><th>書類</th><th>案件</th><th>医療機関</th><th>入荷予定</th><th>状態</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr class="clickable" data-open="case:${r.k.id}">
+        <td><span class="tag seal">${r.d}</span></td><td class="num">${esc(r.k.no)}</td>
+        <td>${esc(clinicOf(r.k.clinicId)?.name||'')}</td><td class="num">${fmt(r.k.arrivalPlan)}</td>
+        <td>${statusTag(r.k.status)}</td></tr>`).join('')}</tbody></table>`
+      :'<div class="empty">全案件そろっています。</div>'}
+  </div>`;
+}
+
+function viewUsers(){
+  return `
+  <div class="panel">
+    <h2>利用者 <span class="count num">${staffList.length}名</span></h2>
+    <table><thead><tr><th>氏名</th><th>権限</th><th></th></tr></thead><tbody>
+      ${staffList.map(u=>`<tr>
+        <td class="tname">${esc(u.name)}${u.id===me.id?'<span class="tsub">（自分）</span>':''}</td>
+        <td><span class="tag ${u.role==='admin'?'seal':u.role==='member'?'flat':'done'}">${ROLES[u.role]}</span></td>
+        <td style="white-space:nowrap">
+          ${u.id===me.id?'':`<button class="btn sub" data-role="${u.id}">権限を変える</button>
+            <button class="btn danger" data-deluser="${u.id}">利用を止める</button>`}
+        </td></tr>`).join('')}
+    </tbody></table>
+  </div>
+  <div class="panel">
+    <h2>社員を増やすとき</h2>
+    <div class="body">
+      <p style="margin-top:0">ログインアカウント自体は Supabase の管理画面で作ります。ここからは作れません。パスワードを扱う操作なので、意図的に画面側から切り離しています。</p>
+      <ol style="margin:0;padding-left:20px">
+        <li>Supabase → Authentication → Users → Add user。Auto Confirm User をオンに。</li>
+        <li>SQL Editor で権限を登録：</li>
+      </ol>
+      <pre style="background:#F4F6F8;border:1px solid var(--rule);padding:10px;overflow:auto;font-size:12px">insert into staff (id, name, role)
+select id, '氏名', 'member' from auth.users where email = '追加した人のメール';</pre>
+      <p class="tsub" style="margin-bottom:0">role は admin / member / viewer のどれか。viewer は医師の個人情報と申請サイトのパスワードが見えません。</p>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   ドロワー
+   ============================================================ */
+function openDrawer(title, body, foot){
+  $('#drawerTitle').textContent = title;
+  $('#drawerBody').innerHTML = body;
+  $('#drawerFoot').innerHTML = foot;
+  $('#drawer').classList.add('open'); $('#drawer').setAttribute('aria-hidden','false');
+  $('#scrim').classList.add('open');
+  wireDrawer();
+}
+function closeDrawer(){
+  $('#drawer').classList.remove('open'); $('#drawer').setAttribute('aria-hidden','true');
+  $('#scrim').classList.remove('open');
+}
+
+let attachMeta = {}, formFiles = {}, formRemoved = {}, pickSlot = null;
+function resetAttach(){ attachMeta={}; formFiles={}; formRemoved={}; pickSlot=null; }
+function attachHtml(slot, meta){ attachMeta[slot] = meta||null; return `<span class="att" data-att="${slot}">${attachInner(slot)}</span>`; }
+function attachInner(slot){
+  const pend = formFiles[slot];
+  const meta = formRemoved[slot] ? null : attachMeta[slot];
+  if(pend) return `<span class="fname">${esc(pend.name)}</span><span class="pending">未保存・${humanSize(pend.size)}</span>
+    <button type="button" class="rm" data-attrm="${slot}">外す</button>`;
+  if(meta) return `<span class="fname">${esc(meta.name)}</span>
+    <button type="button" data-attopen="${slot}">開く</button><button type="button" class="rm" data-attrm="${slot}">外す</button>`;
+  return `<button type="button" data-attpick="${slot}">ファイルを選ぶ</button>`;
+}
+function refreshAttach(slot){ const el=document.querySelector(`.att[data-att="${slot}"]`); if(el) el.innerHTML = attachInner(slot); }
+
+$('#attPick').addEventListener('change', e=>{
+  const f = e.target.files[0], slot = pickSlot;
+  e.target.value=''; pickSlot=null;
+  if(!f || !slot) return;
+  if(f.size > MAX_FILE){ toast(`${humanSize(f.size)}あります。5MBまでにしてください`); return; }
+  formFiles[slot] = f; delete formRemoved[slot];
+  if(slot.startsWith('doc:')){ const c=$('#doc_'+slot.split(':')[1]); if(c) c.checked = true; }
+  refreshAttach(slot);
+  toast('添付しました。保存すると確定します');
+});
+
+function clinicForm(c){
+  const isNew = !c;
+  c = c || { id:null, name:'', code:'', pref:'', addr:'', tel:'', doctor:'', doctorKana:'', doctorAddr:'', doctorTel:'',
+             licenseNo:'', licenseDate:'', license:null, loginId:'', mfa:'', proxyFrom:'', proxyTo:'', contact:'', note:'' };
+  return `
+    <input type="hidden" id="f_id" value="${c.id||''}">
+    <div class="row2">
+      <div class="field"><label for="f_name">医療機関名</label><input id="f_name" value="${esc(c.name)}"></div>
+      <div class="field"><label for="f_code">管理コード</label><input id="f_code" class="num" value="${esc(c.code)}"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="f_pref">都道府県</label><input id="f_pref" value="${esc(c.pref)}"></div>
+      <div class="field"><label for="f_tel">医療機関の電話番号</label><input id="f_tel" class="num" value="${esc(c.tel)}"></div>
+    </div>
+    <div class="field"><label for="f_addr">医療機関の住所</label><input id="f_addr" value="${esc(c.addr)}" placeholder="番地・建物名まで"></div>
+
+    <fieldset>
+      <legend>申請名義人（医師本人）</legend>
+      <p class="tsub" style="margin:0 0 10px">個人輸入としての申請なので、医師個人の氏名・自宅住所・電話番号と免許証が要ります。</p>
+      <div class="row2">
+        <div class="field"><label for="f_doctor">医師氏名</label><input id="f_doctor" value="${esc(c.doctor)}"></div>
+        <div class="field"><label for="f_doctorKana">フリガナ</label><input id="f_doctorKana" value="${esc(c.doctorKana)}"></div>
+      </div>
+      <div class="field"><label for="f_doctorAddr">医師の自宅住所</label><input id="f_doctorAddr" value="${esc(c.doctorAddr)}" placeholder="住民票どおりに"></div>
+      <div class="field"><label for="f_doctorTel">医師の電話番号</label><input id="f_doctorTel" class="num" value="${esc(c.doctorTel)}"></div>
+      <div class="row2">
+        <div class="field"><label for="f_licenseNo">医籍登録番号</label><input id="f_licenseNo" class="num" value="${esc(c.licenseNo)}"></div>
+        <div class="field"><label for="f_licenseDate">登録年月日</label><input type="date" id="f_licenseDate" value="${c.licenseDate||''}"></div>
+      </div>
+      <div class="field"><label>医師免許証（PDFまたは画像・5MBまで）</label>
+        <div class="attbox">${attachHtml('license', c.license)}</div></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>申請サイトのアカウント</legend>
+      <div class="field"><label for="f_loginId">ログインID</label><input id="f_loginId" class="num" value="${esc(c.loginId)}"></div>
+      <div class="field"><label for="f_pw">パスワード</label>
+        <div class="cred">
+          <input id="f_pw" type="password" placeholder="${vaultKey?'変更するときだけ入力':'解錠すると編集できます'}" ${vaultKey?'':'disabled'}>
+          <button type="button" class="btn sub" id="revealPw" ${vaultKey&&c.cred?'':'disabled'}>表示</button>
+        </div></div>
+      <div class="field"><label for="f_mfa">二段階認証の受け取り先</label><input id="f_mfa" value="${esc(c.mfa)}" placeholder="例：事務長の携帯にSMS"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>代行の権限</legend>
+      <div class="row2">
+        <div class="field"><label for="f_pfrom">付与日</label><input type="date" id="f_pfrom" value="${c.proxyFrom||''}"></div>
+        <div class="field"><label for="f_pto">期限</label><input type="date" id="f_pto" value="${c.proxyTo||''}"></div>
+      </div>
+      <div class="field"><label for="f_contact">窓口</label><input id="f_contact" value="${esc(c.contact)}"></div>
+    </fieldset>
+
+    <div class="field"><label for="f_note">メモ</label><textarea id="f_note">${esc(c.note)}</textarea></div>
+    ${isNew?'':`<div class="panel" style="margin:0"><h2>この医院の案件</h2>${caseTable(db.cases.filter(k=>k.clinicId===c.id))}</div>`}`;
+}
+
+function caseForm(k){
+  k = k || { id:null, no:'', clinicId:db.clinics[0]?.id||'', item:'', origin:'', applied:'', status:'準備中',
+             certNo:'', certExpiry:'', awb:'', invoiceNo:'', arrivalPlan:'', docs:{}, note:'' };
+  return `
+    <input type="hidden" id="f_id" value="${k.id||''}">
+    <div class="row2">
+      <div class="field"><label for="f_no">案件番号</label><input id="f_no" class="num" value="${esc(k.no)}"></div>
+      <div class="field"><label for="f_clinic">医療機関</label>
+        <select id="f_clinic">${db.clinics.map(c=>`<option value="${c.id}" ${c.id===k.clinicId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="f_item">品目・数量</label><input id="f_item" value="${esc(k.item)}"></div>
+      <div class="field"><label for="f_origin">仕入国</label><input id="f_origin" value="${esc(k.origin)}"></div>
+    </div>
+    <div class="row3">
+      <div class="field"><label for="f_status">状態</label>
+        <select id="f_status">${STATUSES.map(s=>`<option ${s===k.status?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_applied">申請日</label><input type="date" id="f_applied" value="${k.applied||''}"></div>
+      <div class="field"><label for="f_arrival">入荷予定</label><input type="date" id="f_arrival" value="${k.arrivalPlan||''}"></div>
+    </div>
+    <fieldset><legend>貨物</legend>
+      <div class="row2">
+        <div class="field"><label for="f_awb">AWB番号</label><input id="f_awb" class="num" value="${esc(k.awb)}"></div>
+        <div class="field"><label for="f_inv">INVOICE番号</label><input id="f_inv" class="num" value="${esc(k.invoiceNo)}"></div>
+      </div></fieldset>
+    <fieldset><legend>薬監証明</legend>
+      <div class="row2">
+        <div class="field"><label for="f_certno">証明番号</label><input id="f_certno" class="num" value="${esc(k.certNo)}"></div>
+        <div class="field"><label for="f_certexp">有効期限</label><input type="date" id="f_certexp" value="${k.certExpiry||''}"></div>
+      </div></fieldset>
+    <fieldset><legend>書類</legend>
+      <ul class="doclist">
+        ${DOC_TYPES.map((d,i)=>{
+          const rec = k.docs?.[d] || { ok:false, ref:'', file:null };
+          return `<li><div class="drow">
+              <input type="checkbox" class="chk" id="doc_${i}" ${rec.ok?'checked':''}>
+              <label class="dname" for="doc_${i}">${d}</label>
+              ${attachHtml('doc:'+i, rec.file)}
+            </div>
+            <input type="text" id="ref_${i}" value="${esc(rec.ref)}" placeholder="紙で保管しているときはその場所をメモ"></li>`;
+        }).join('')}
+      </ul></fieldset>
+    <div class="field"><label for="f_note">メモ</label><textarea id="f_note">${esc(k.note)}</textarea></div>`;
+}
+
+function openRecord(target){
+  resetAttach();
+  const [kind,id] = target.split(':');
+  if(kind==='clinic'){
+    const c = id==='new' ? null : clinicOf(id);
+    openDrawer(c?c.name:'医療機関を追加', clinicForm(c),
+      canWrite() ? `<button class="btn" id="saveClinic">保存する</button><button class="btn sub" id="cancelDrawer">やめる</button>`
+                 : `<button class="btn sub" id="cancelDrawer">閉じる</button>`);
+  } else {
+    const k = id==='new' ? null : db.cases.find(x=>x.id===id);
+    openDrawer(k?k.no:'案件を追加', caseForm(k),
+      canWrite() ? `<button class="btn" id="saveCase">保存する</button><button class="btn sub" id="cancelDrawer">やめる</button>
+                    ${k?`<button class="btn danger" style="margin-left:auto" id="delCase">削除する</button>`:''}`
+                 : `<button class="btn sub" id="cancelDrawer">閉じる</button>`);
+  }
+}
+
+/* ---------- イベント ---------- */
+function wire(){
+  if(!canWrite()) document.querySelectorAll('[data-new]').forEach(el=>el.remove());
+  document.querySelectorAll('[data-open]').forEach(el=>
+    el.addEventListener('click', e=>{ e.stopPropagation(); openRecord(el.dataset.open); }));
+  document.querySelectorAll('[data-new]').forEach(el=>
+    el.addEventListener('click', ()=> openRecord(el.dataset.new+':new')));
+  const qi = $('#q');
+  if(qi) qi.addEventListener('input', e=>{ q=e.target.value.trim(); const p=e.target.selectionStart;
+    render(); const n=$('#q'); if(n){ n.focus(); n.setSelectionRange(p,p); } });
+  $('#fstatus')?.addEventListener('change', e=>{ filterStatus=e.target.value; render(); });
+  $('#exportCsv')?.addEventListener('click', exportCsv);
+
+  document.querySelectorAll('[data-role]').forEach(b=> b.addEventListener('click', async ()=>{
+    const u = staffList.find(x=>x.id===b.dataset.role);
+    const next = u.role==='admin' ? 'member' : u.role==='member' ? 'viewer' : 'admin';
+    try{ await patch('staff', `id=eq.${u.id}`, { role:next }); u.role = next; render(); toast(`${u.name} を${ROLES[next]}にしました`); }
+    catch(e){ toast('変更できませんでした（'+e.message+'）'); }
+  }));
+  document.querySelectorAll('[data-deluser]').forEach(b=> b.addEventListener('click', async ()=>{
+    const u = staffList.find(x=>x.id===b.dataset.deluser);
+    try{ await remove('staff', `id=eq.${u.id}`); staffList = staffList.filter(x=>x.id!==u.id);
+      render(); toast(`${u.name} の利用を止めました`); }
+    catch(e){ toast('できませんでした（'+e.message+'）'); }
+  }));
+}
+
+let drawerBound = false;
+function wireDrawer(){
+  if(!drawerBound){ drawerBound = true;
+    $('#drawerBody').addEventListener('click', async e=>{
+      const b = e.target.closest('button'); if(!b) return;
+      if(b.dataset.attpick){ pickSlot = b.dataset.attpick; $('#attPick').click(); }
+      else if(b.dataset.attopen){
+        const m = attachMeta[b.dataset.attopen];
+        try{ await openStored(m.path); }catch(err){ toast('開けませんでした（'+err.message+'）'); }
+      }
+      else if(b.dataset.attrm){
+        const s = b.dataset.attrm;
+        if(formFiles[s]) delete formFiles[s]; else formRemoved[s] = true;
+        refreshAttach(s);
+      }
+    });
+  }
+  $('#cancelDrawer')?.addEventListener('click', closeDrawer);
+  $('#saveClinic')?.addEventListener('click', saveClinic);
+  $('#saveCase')?.addEventListener('click', saveCase);
+  $('#delCase')?.addEventListener('click', deleteCase);
+  $('#revealPw')?.addEventListener('click', revealPw);
+
+  if(!canWrite()){
+    $('#drawerBody').querySelectorAll('input,select,textarea').forEach(el=> el.disabled = true);
+    const a=$('#f_doctorAddr'), t=$('#f_doctorTel');
+    if(a) a.value = '●●●●●●（この権限では表示されません）';
+    if(t) t.value = '●●●●●●';
+    $('#drawerBody').querySelectorAll('[data-attopen],[data-attpick],[data-attrm]').forEach(b=> b.remove());
+  }
+}
+
+async function revealPw(){
+  const id = $('#f_id').value;
+  const c = clinicOf(id);
+  if(!c?.cred){ toast('この医院のパスワードはまだ登録されていません'); return; }
+  try{
+    $('#f_pw').type = 'text';
+    $('#f_pw').value = await openText(c.cred.iv, c.cred.ct);
+    insert('access_log', { actor:me.id, action:'credential.read', target:id }, 'return=minimal').catch(()=>{});
+  }catch(e){ toast('復号できませんでした。マスターパスワードを確認してください'); }
+}
+
+/* ============================================================
+   保存
+   ============================================================ */
+function busy(on){ document.querySelectorAll('#drawerFoot .btn').forEach(b=> b.disabled = on); }
+
+async function saveClinic(){
+  const id = $('#f_id').value || null;
+  const name = $('#f_name').value.trim();
+  if(!name){ toast('医療機関名を入れてください'); return; }
+  busy(true);
+  try{
+    const row = { name, code:$('#f_code').value.trim()||null, pref:$('#f_pref').value.trim(),
+      address:$('#f_addr').value.trim(), phone:$('#f_tel').value.trim(),
+      contact:$('#f_contact').value.trim(), login_id:$('#f_loginId').value.trim(),
+      mfa_route:$('#f_mfa').value.trim(), note:$('#f_note').value, updated_at:new Date().toISOString() };
+    let saved;
+    if(id){ saved = (await patch('clinics', `id=eq.${id}`, row))[0]; }
+    else   { saved = await insert('clinics', row); }
+    const cid = saved.id;
+
+    // 免許証ファイル
+    let licensePath = attachMeta['license']?.path || null;
+    let licenseName = attachMeta['license']?.name || null;
+    if(formRemoved['license'] && licensePath){ await deleteFile(licensePath); licensePath = null; licenseName = null; }
+    if(formFiles['license']){
+      const f = formFiles['license'];
+      const ext = (f.name.split('.').pop()||'pdf').toLowerCase();
+      if(licensePath) await deleteFile(licensePath);
+      licensePath = await uploadFile(`licenses/${cid}.${ext}`, f);
+      licenseName = f.name;
+    }
+
+    await upsert('clinic_doctors', { clinic_id:cid,
+      full_name:$('#f_doctor').value.trim(), kana:$('#f_doctorKana').value.trim(),
+      home_address:$('#f_doctorAddr').value.trim(), personal_phone:$('#f_doctorTel').value.trim(),
+      license_no:$('#f_licenseNo').value.trim()||null, licensed_on:$('#f_licenseDate').value||null,
+      license_path:licensePath, license_name:licenseName,
+      license_added: licensePath ? new Date().toISOString().slice(0,10) : null,
+      updated_at:new Date().toISOString() });
+
+    // 代行権限
+    const from = $('#f_pfrom').value, to = $('#f_pto').value;
+    const existing = clinicOf(id)?.proxyId;
+    if(from){
+      if(existing) await patch('proxy_authorizations', `id=eq.${existing}`, { granted_on:from, expires_on:to||null });
+      else await insert('proxy_authorizations', { clinic_id:cid, granted_on:from, expires_on:to||null });
+    }
+
+    // 申請サイトのパスワード
+    const pw = $('#f_pw');
+    if(vaultKey && pw && !pw.disabled && pw.value){
+      const s = await sealText(pw.value);
+      await upsert('clinic_credentials', { clinic_id:cid, ct_password:s.ct, iv:s.iv,
+        rotated_at:new Date().toISOString().slice(0,10), updated_by:me.id, updated_at:new Date().toISOString() });
+      insert('access_log', { actor:me.id, action:'credential.update', target:cid }, 'return=minimal').catch(()=>{});
+    }
+
+    await loadAll(); closeDrawer(); render(); toast('保存しました');
+  }catch(e){ toast('保存できませんでした（'+e.message+'）'); }
+  finally{ busy(false); }
+}
+
+async function saveCase(){
+  const id = $('#f_id').value || null;
+  const no = $('#f_no').value.trim();
+  if(!no){ toast('案件番号を入れてください'); return; }
+  busy(true);
+  try{
+    const row = { case_no:no, clinic_id:$('#f_clinic').value, item_summary:$('#f_item').value.trim(),
+      origin_country:$('#f_origin').value.trim(), applied_on:$('#f_applied').value||null,
+      status:$('#f_status').value, cert_no:$('#f_certno').value.trim()||null,
+      cert_expires_on:$('#f_certexp').value||null, awb_no:$('#f_awb').value.trim()||null,
+      invoice_no:$('#f_inv').value.trim()||null, arrival_plan:$('#f_arrival').value||null,
+      note:$('#f_note').value, updated_at:new Date().toISOString() };
+    let saved;
+    if(id){ saved = (await patch('import_cases', `id=eq.${id}`, row))[0]; }
+    else   { row.created_by = me.id; saved = await insert('import_cases', row); }
+    const kid = saved.id;
+    const old = id ? db.cases.find(x=>x.id===id) : null;
+
+    for(let i=0;i<DOC_TYPES.length;i++){
+      const type = DOC_TYPES[i], slot = 'doc:'+i;
+      const ok = $('#doc_'+i).checked, ref = $('#ref_'+i).value.trim();
+      let path = attachMeta[slot]?.path || null;
+      let fname = attachMeta[slot]?.name || null;
+      if(formRemoved[slot] && path){ await deleteFile(path); path = null; fname = null; }
+      if(formFiles[slot]){
+        const f = formFiles[slot];
+        const ext = (f.name.split('.').pop()||'pdf').toLowerCase();
+        if(path) await deleteFile(path);
+        path = await uploadFile(`${no}/${DOC_SLUG[type]}_${no}.${ext}`, f);
+        fname = f.name;
+      }
+      const prev = old?.docs?.[type];
+      if(!ok && !path && !ref){
+        if(prev?.rowId) await remove('case_documents', `id=eq.${prev.rowId}`);
+        continue;
+      }
+      const docRow = { case_id:kid, doc_type:type, is_received:ok, note:ref||null,
+                       file_path:path, file_name:fname, uploaded_by:me.id };
+      if(prev?.rowId) await patch('case_documents', `id=eq.${prev.rowId}`, docRow);
+      else await insert('case_documents', docRow, 'return=minimal');
+    }
+    await loadAll(); closeDrawer(); render(); toast('保存しました');
+  }catch(e){ toast('保存できませんでした（'+e.message+'）'); }
+  finally{ busy(false); }
+}
+
+async function deleteCase(){
+  const id = $('#f_id').value; if(!id) return;
+  const k = db.cases.find(x=>x.id===id);
+  busy(true);
+  try{
+    for(const t of DOC_TYPES){ const f=k?.docs?.[t]?.file; if(f?.path) await deleteFile(f.path); }
+    await remove('import_cases', `id=eq.${id}`);
+    await loadAll(); closeDrawer(); render(); toast('削除しました');
+  }catch(e){ toast('削除できませんでした（'+e.message+'）'); }
+  finally{ busy(false); }
+}
+
+/* ============================================================
+   保管庫の施錠・解錠
+   ============================================================ */
+function setLockUI(){
+  $('#lockdot').classList.toggle('on', !!vaultKey);
+  $('#locklabel').textContent = vaultKey ? '保管庫は解錠中' : '保管庫は施錠中';
+  $('#lockbtn').textContent = vaultKey ? '施錠する' : '解錠する';
+}
+$('#lockbtn').addEventListener('click', ()=>{
+  if(vaultKey){ vaultKey = null; setLockUI(); render(); toast('施錠しました'); return; }
+  const first = !vaultMeta;
+  if(first && !isAdmin()){ toast('最初のマスターパスワードは管理者が決めてください'); return; }
+  $('#passTitle').textContent = first ? 'マスターパスワードを決める' : '保管庫を解錠する';
+  $('#passHelp').textContent = first
+    ? '申請サイトのパスワードはこれで暗号化します。全員で同じものを使います。忘れると誰も復号できません。'
+    : 'この端末の中だけで復号します。サーバーには暗号文しか保存されていません。';
+  $('#passConfirmWrap').hidden = !first;
+  $('#passOk').textContent = first ? '決定する' : '解錠する';
+  $('#passInput').value=''; $('#passConfirm').value=''; $('#passErr').style.display='none';
+  $('#passDlg').showModal(); $('#passInput').focus();
+});
+$('#passCancel').addEventListener('click', ()=> $('#passDlg').close());
+$('#passOk').addEventListener('click', async ()=>{
+  const pass = $('#passInput').value, err = $('#passErr');
+  if(pass.length < 8){ err.textContent='8文字以上にしてください。'; err.style.display='block'; return; }
+  try{
+    if(!vaultMeta){
+      if(pass !== $('#passConfirm').value){ err.textContent='2つの入力が一致しません。'; err.style.display='block'; return; }
+      const salt = b64.to(crypto.getRandomValues(new Uint8Array(16)));
+      vaultKey = await deriveKey(pass, salt);
+      const chk = await sealText('yakkan-ok');
+      vaultMeta = await upsert('vault_meta', { id:1, salt, check_iv:chk.iv, check_ct:chk.ct, updated_at:new Date().toISOString() });
+    } else {
+      vaultKey = await deriveKey(pass, vaultMeta.salt);
+      const v = await openText(vaultMeta.check_iv, vaultMeta.check_ct);
+      if(v !== 'yakkan-ok') throw new Error('mismatch');
+    }
+  }catch(e){
+    vaultKey = null;
+    err.textContent = /mismatch|operation-specific/i.test(e.message||'') ? 'パスワードが違います。' : ('できませんでした（'+e.message+'）');
+    err.style.display='block'; return;
+  }
+  $('#passDlg').close(); setLockUI(); render(); toast('解錠しました');
+});
+
+/* ---------- CSV ---------- */
+function exportCsv(){
+  const head = ['案件番号','医療機関','品目','仕入国','申請日','状態','証明番号','証明期限','AWB','INVOICE','入荷予定','不足書類'];
+  const rows = db.cases.map(k=>[k.no, clinicOf(k.clinicId)?.name||'', k.item, k.origin, k.applied, k.status,
+    k.certNo, k.certExpiry, k.awb, k.invoiceNo, k.arrivalPlan, missingDocs(k).join('・')]
+    .map(v=>`"${(v??'').toString().replaceAll('"','""')}"`).join(','));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff'+[head.join(','),...rows].join('\r\n')], {type:'text/csv'}));
+  a.download = `yakkan-cases-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(a.href);
+  toast('CSVを書き出しました');
+}
+
+/* ---------- ナビ ---------- */
+document.querySelectorAll('nav.tabs button').forEach(b=>
+  b.addEventListener('click', ()=>{ view=b.dataset.view; q=''; filterStatus='all'; render(); }));
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#scrim').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
+
+boot();
+</script>
