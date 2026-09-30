@@ -678,12 +678,12 @@ async function loadAll(){
     const p = (c.proxy_authorizations||[]).filter(x=>!x.revoked_on)
               .sort((a,b)=> (b.granted_on||'').localeCompare(a.granted_on||''))[0] || {};
     const cr = (c.clinic_credentials && (Array.isArray(c.clinic_credentials)?c.clinic_credentials[0]:c.clinic_credentials)) || null;
-    return { id:c.id, code:c.code||'', name:c.name, pref:c.pref||'', addr:c.address||'', tel:c.phone||'',
+    return { id:c.id, code:c.code||'', name:c.name, pref:c.pref||'', addr:c.address||'', tel:c.phone||'', postal:c.postal_code||'',
       contact:c.contact||'', loginId:c.login_id||'', mfa:c.mfa_route||'', note:c.note||'',
       doctor:d.full_name||'', doctorKana:d.kana||'', doctorAddr:d.home_address||'', doctorTel:d.personal_phone||'',
       licenseNo:d.license_no||'', licenseDate:d.licensed_on||'',
       license: d.license_path ? { path:d.license_path, name:d.license_name||'免許証' } : null,
-      doctorEn: d.full_name_en||'',
+      doctorEn: d.full_name_en||'', doctorAddrEn: d.home_address_en||'',
       nameEn: c.name_en||'', addrEn: c.address_en||'', telIntl: c.phone_intl||'',
       hasDoctorRow: !!d.clinic_id,
       proxyId:p.id||null, proxyFrom:p.granted_on||'', proxyTo:p.expires_on||'',
@@ -931,9 +931,9 @@ $('#attPick').addEventListener('change', e=>{
 
 function clinicForm(c){
   const isNew = !c;
-  c = c || { id:null, name:'', code:'', pref:'', addr:'', tel:'', doctor:'', doctorKana:'', doctorAddr:'', doctorTel:'',
+  c = c || { id:null, name:'', code:'', pref:'', postal:'', addr:'', tel:'', doctor:'', doctorKana:'', doctorAddr:'', doctorTel:'',
              licenseNo:'', licenseDate:'', license:null, loginId:'', mfa:'', proxyFrom:'', proxyTo:'', contact:'', note:'',
-             nameEn:'', addrEn:'', telIntl:'', doctorEn:'' };
+             nameEn:'', addrEn:'', telIntl:'', doctorEn:'', doctorAddrEn:'' };
   return `
     <input type="hidden" id="f_id" value="${c.id||''}">
     <div class="row2">
@@ -943,6 +943,10 @@ function clinicForm(c){
     <div class="row2">
       <div class="field"><label for="f_pref">都道府県</label><input id="f_pref" value="${esc(c.pref)}"></div>
       <div class="field"><label for="f_tel">医療機関の電話番号</label><input id="f_tel" class="num" value="${esc(c.tel)}"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="f_postal">郵便番号</label><input id="f_postal" class="num" value="${esc(c.postal||'')}" placeholder="000-0000"></div>
+      <div class="field"></div>
     </div>
     <div class="field"><label for="f_addr">医療機関の住所</label><input id="f_addr" value="${esc(c.addr)}" placeholder="番地・建物名まで"></div>
 
@@ -972,6 +976,7 @@ function clinicForm(c){
       </p>
       <div class="field"><label for="f_nameEn">医療機関名（英語）</label><input id="f_nameEn" value="${esc(c.nameEn)}"></div>
       <div class="field"><label for="f_addrEn">医療機関の住所（英語）</label><input id="f_addrEn" value="${esc(c.addrEn)}"></div>
+      <div class="field"><label for="f_doctorAddrEn">医師の自宅住所（英語）</label><input id="f_doctorAddrEn" value="${esc(c.doctorAddrEn)}"></div>
       <div class="row2">
         <div class="field"><label for="f_telIntl">電話番号（国際表記）</label><input id="f_telIntl" class="num" value="${esc(c.telIntl)}"></div>
         <div class="field"><label for="f_doctorEn">医師氏名（英語）</label><input id="f_doctorEn" value="${esc(c.doctorEn)}"></div>
@@ -1054,6 +1059,15 @@ function caseForm(k){
    ============================================================ */
 let imp = null;   // { head:[], rows:[[]], map:{}, prepared:[] }
 
+const UPDATE_FIELDS = [
+  { key:'name',     label:'クリニック名（照合に使う）', re:/クリニック名|医療機関|会社名/, not:/Bカート/, required:true },
+  { key:'postal',   label:'郵便番号',        re:/郵便/ },
+  { key:'pref',     label:'都道府県',        re:/都道府県/ },
+  { key:'addr',     label:'市区町村・番地',  re:/市区町村|町域|番地|住所/ },
+  { key:'building', label:'建物名',          re:/建物|ビル/ },
+  { key:'tel',      label:'電話番号',        re:/電話|TEL/ }
+];
+
 const IMPORT_FIELDS = [
   { key:'name',     label:'クリニック名',     re:/クリニック名|医療機関/,               required:true },
   { key:'doctor',   label:'医師氏名',         re:/氏名/,          not:/ローマ字/,        required:true },
@@ -1085,18 +1099,21 @@ function parseCsv(text){
 }
 
 /* 見出しから列を推測する。同じ見出しが複数あるので、中身が埋まっている列を選ぶ */
-function guessColumns(head, rows){
+function guessColumns(head, rows, fields){
   const filled = i => rows.reduce((n,r)=> n + ((r[i]||'').trim() ? 1 : 0), 0);
   const map = {};
-  for(const f of IMPORT_FIELDS){
+  const used = new Set();
+  for(const f of (fields || IMPORT_FIELDS)){
     let best = -1, bestCount = -1;
     head.forEach((h,i)=>{
       if(!f.re.test(h)) return;
       if(f.not && f.not.test(h)) return;
+      if(used.has(i)) return;
       const n = filled(i);
       if(n > bestCount){ bestCount = n; best = i; }
     });
     map[f.key] = best;
+    if(best >= 0) used.add(best);
   }
   return map;
 }
@@ -1150,22 +1167,52 @@ function prepareImport(){
   });
 }
 
+/* 既存の医療機関に住所を流し込むための突合 */
+function prepareUpdate(){
+  const m = imp.map, col = (r,k) => m[k] >= 0 ? (r[m[k]]||'').trim() : '';
+  const byName = {};
+  db.clinics.forEach(c=>{
+    const k = normName(c.name);
+    if(k) (byName[k] = byName[k] || []).push(c);
+  });
+  imp.prepared = imp.rows.map((r, idx) => {
+    const name = col(r,'name').replace(/[\s　]+/g,' ').trim();
+    const hits = byName[normName(name)] || [];
+    const addr = [col(r,'addr'), col(r,'building')].filter(Boolean).join(' ').trim();
+    const target = hits.length === 1 ? hits[0] : null;
+    let status = '', include = false;
+    if(!hits.length) status = '見つからない';
+    else if(hits.length > 1) status = '同名が複数・要確認';
+    else if(!addr) status = '住所が空';
+    else if((target.addr||'').trim()){ status = 'すでに住所あり'; include = !imp.keepExisting; }
+    else { status = '更新する'; include = true; }
+    return { idx, name, target, status, include,
+      postal: col(r,'postal'), pref: col(r,'pref'), addr, tel: col(r,'tel'),
+      current: target ? (target.addr || '') : '' };
+  });
+}
+
 function viewImport(){
   if(!imp){
     return `
     <div class="panel">
       <h2>CSV一括取込</h2>
       <div class="body">
-        <p style="margin-top:0">申込フォームの書き出し（CSV）を読み込んで、医療機関と申請名義人をまとめて登録します。</p>
-        <p class="tsub">読み込んだ時点では登録されません。列の対応と内容を確認してから、選んだ行だけを登録します。</p>
+        <div class="field" style="max-width:420px">
+          <label for="impMode">何をしますか</label>
+          <select id="impMode">
+            <option value="new">新しい医療機関をまとめて登録する</option>
+            <option value="update">登録済みの医療機関に住所を流し込む</option>
+          </select>
+        </div>
+        <p class="tsub" id="impHelp">申込フォームの書き出しを読み込んで、医療機関と申請名義人をまとめて登録します。</p>
         <input type="file" id="impFile" accept=".csv,text/csv">
+        <p class="tsub" style="margin-bottom:0">読み込んだ時点では登録されません。内容を確認してから、選んだ行だけを反映します。</p>
       </div>
-    </div>
-    <div class="panel">
-      <h2>取り込める項目</h2>
-      <div class="body tsub">${IMPORT_FIELDS.map(f=>f.label + (f.required?'（必須）':'')).join('　/　')}</div>
     </div>`;
   }
+
+  if(imp.mode === 'update') return viewImportUpdate();
 
   const p = imp.prepared;
   const ok = p.filter(x=>x.include).length;
@@ -1221,6 +1268,83 @@ function viewImport(){
   </div>`;
 }
 
+function viewImportUpdate(){
+  const p = imp.prepared;
+  const n = k => p.filter(x=>x.status===k).length;
+  const ok = p.filter(x=>x.include).length;
+  return `
+  <div class="board">
+    <div class="stack customs"><h3>読み込んだ行</h3><div class="n num">${p.length}</div></div>
+    <div class="stack"><h3>住所を入れる</h3><div class="n num">${ok}</div></div>
+    <div class="stack warn"><h3>すでに住所あり</h3><div class="n num">${n('すでに住所あり')}</div></div>
+    <div class="stack seal"><h3>見つからない</h3><div class="n num">${n('見つからない') + n('同名が複数・要確認')}</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>列の対応</h2>
+    <div class="body">
+      <div class="row3">
+        ${UPDATE_FIELDS.map(f=>`
+          <div class="field"><label for="map_${f.key}">${f.label}</label>
+            <select id="map_${f.key}" data-mapkey="${f.key}">
+              <option value="-1">— 使わない —</option>
+              ${imp.head.map((h,i)=>`<option value="${i}" ${imp.map[f.key]===i?'selected':''}>${esc((h||'').slice(0,28)||('列'+(i+1)))}</option>`).join('')}
+            </select></div>`).join('')}
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <input type="checkbox" class="chk" id="keepExisting" ${imp.keepExisting?'checked':''}>
+        <span>すでに住所が入っている医療機関は上書きしない</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>確認 <span class="count num">${p.length}件</span></h2>
+    <div class="toolbar">
+      <button class="btn" id="impRun">選んだ${ok}件に住所を入れる</button>
+      <button class="btn sub" id="impNone">選択を外す</button>
+      <button class="btn danger" id="impCancel">やめる</button>
+    </div>
+    <table>
+      <thead><tr><th style="width:34px"></th><th>クリニック名</th><th>いまの住所</th><th>入れる住所</th><th>状態</th></tr></thead>
+      <tbody>${p.map(x=>`
+        <tr>
+          <td>${x.target && x.addr ? `<input type="checkbox" class="chk" data-inc="${x.idx}" ${x.include?'checked':''}>` : ''}</td>
+          <td><span class="tname">${esc(x.name||'—')}</span></td>
+          <td class="tsub">${esc(x.current||'（空）')}</td>
+          <td>${esc([x.postal,x.pref,x.addr].filter(Boolean).join(' '))}</td>
+          <td>${x.status==='更新する' ? `<span class="tag done">${x.status}</span>`
+               : x.status==='すでに住所あり' ? `<span class="tag warn">${x.status}</span>`
+               : `<span class="tag seal">${esc(x.status)}</span>`}</td>
+        </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+async function runUpdate(){
+  const rows = imp.prepared.filter(x=>x.include && x.target && x.addr);
+  if(!rows.length){ toast('更新する行が選ばれていません'); return; }
+  const btn = $('#impRun'); btn.disabled = true;
+  let done = 0;
+  try{
+    for(const x of rows){
+      const patchRow = { address:x.addr, updated_at:new Date().toISOString() };
+      if(x.pref)   patchRow.pref = x.pref;
+      if(x.postal) patchRow.postal_code = x.postal;
+      if(x.tel && !(x.target.tel||'').trim()) patchRow.phone = x.tel;
+      await patch('clinics', `id=eq.${x.target.id}`, patchRow);
+      done++;
+      btn.textContent = `更新中… ${done}/${rows.length}`;
+    }
+    imp = null;
+    await loadAll(); view = 'clinics'; render();
+    toast(`${done}件に住所を入れました`);
+  }catch(e){
+    toast(`${done}件まで更新したところで止まりました（${e.message}）`);
+    btn.disabled = false;
+  }
+}
+
 async function runImport(){
   const rows = imp.prepared.filter(x=>x.include);
   if(!rows.length){ toast('登録する行が選ばれていません'); return; }
@@ -1253,32 +1377,44 @@ async function runImport(){
 }
 
 function wireImport(){
+  const mode = $('#impMode');
+  mode?.addEventListener('change', ()=>{
+    $('#impHelp').textContent = mode.value === 'update'
+      ? '住所が入ったCSVを読み込んで、クリニック名で照合し、登録済みの医療機関に住所だけ入れます。'
+      : '申込フォームの書き出しを読み込んで、医療機関と申請名義人をまとめて登録します。';
+  });
   $('#impFile')?.addEventListener('change', async e=>{
     const f = e.target.files[0]; if(!f) return;
     try{
       const rows = parseCsv(await f.text());
       if(rows.length < 2){ toast('中身が読み取れませんでした'); return; }
-      imp = { head: rows[0], rows: rows.slice(1) };
-      imp.map = guessColumns(imp.head, imp.rows);
-      prepareImport();
+      const m = mode ? mode.value : 'new';
+      imp = { mode:m, head:rows[0], rows:rows.slice(1), keepExisting:true };
+      imp.map = guessColumns(imp.head, imp.rows, m === 'update' ? UPDATE_FIELDS : IMPORT_FIELDS);
+      m === 'update' ? prepareUpdate() : prepareImport();
       render();
     }catch(err){ toast('読み込めませんでした（' + err.message + '）'); }
     e.target.value = '';
   });
   document.querySelectorAll('[data-mapkey]').forEach(s=> s.addEventListener('change', ()=>{
     imp.map[s.dataset.mapkey] = parseInt(s.value, 10);
-    prepareImport(); render();
+    imp.mode === 'update' ? prepareUpdate() : prepareImport();
+    render();
   }));
+  $('#keepExisting')?.addEventListener('change', e=>{
+    imp.keepExisting = e.target.checked; prepareUpdate(); render();
+  });
   document.querySelectorAll('[data-inc]').forEach(cb=> cb.addEventListener('change', ()=>{
     const x = imp.prepared.find(p=>p.idx === +cb.dataset.inc);
     if(x) x.include = cb.checked;
     const n = imp.prepared.filter(p=>p.include).length;
-    const b = $('#impRun'); if(b) b.textContent = `選んだ${n}件を登録する`;
+    const b = $('#impRun');
+    if(b) b.textContent = imp.mode === 'update' ? `選んだ${n}件に住所を入れる` : `選んだ${n}件を登録する`;
   }));
   $('#impAll')?.addEventListener('click', ()=>{ imp.prepared.forEach(p=>{ if(p.name && p.doctor) p.include = true; }); render(); });
   $('#impNone')?.addEventListener('click', ()=>{ imp.prepared.forEach(p=> p.include = false); render(); });
   $('#impCancel')?.addEventListener('click', ()=>{ imp = null; render(); });
-  $('#impRun')?.addEventListener('click', runImport);
+  $('#impRun')?.addEventListener('click', ()=> imp.mode === 'update' ? runUpdate() : runImport());
 }
 
 /* ---------- 英語表記の変換と、辞書の学習 ---------- */
@@ -1287,6 +1423,7 @@ function runConversion(){
   const doctor = $('#f_doctor').value.trim();
   $('#f_nameEn').value  = convertName($('#f_name').value);
   $('#f_addrEn').value  = convertAddress($('#f_addr').value);
+  $('#f_doctorAddrEn').value = convertAddress($('#f_doctorAddr').value);
   $('#f_telIntl').value = toIntlPhone($('#f_tel').value);
   $('#f_doctorEn').value = kana ? nameToEnglish(kana)
                          : (doctor && isKatakana(doctor) ? nameToEnglish(doctor) : $('#f_doctorEn').value);
@@ -1294,7 +1431,7 @@ function runConversion(){
 }
 function renderDictBox(){
   const box = $('#dictBox'); if(!box) return;
-  const unknown = collectUnknown([$('#f_nameEn').value, $('#f_addrEn').value, $('#f_doctorEn').value].join(' '));
+  const unknown = collectUnknown([$('#f_nameEn').value, $('#f_addrEn').value, $('#f_doctorAddrEn').value, $('#f_doctorEn').value].join(' '));
   const needKana = !$('#f_doctorKana').value.trim() && !!$('#f_doctor').value.trim() && !$('#f_doctorEn').value.trim();
   if(!unknown.length && !needKana){ box.innerHTML = ''; return; }
   box.innerHTML = `<div class="attbox">
@@ -1422,6 +1559,7 @@ async function saveClinic(){
   try{
     const row = { name, code:$('#f_code').value.trim()||null, pref:$('#f_pref').value.trim(),
       address:$('#f_addr').value.trim(), phone:$('#f_tel').value.trim(),
+      postal_code:$('#f_postal').value.trim()||null,
       name_en:$('#f_nameEn').value.trim()||null, address_en:$('#f_addrEn').value.trim()||null,
       phone_intl:$('#f_telIntl').value.trim()||null,
       contact:$('#f_contact').value.trim(), login_id:$('#f_loginId').value.trim(),
@@ -1446,6 +1584,7 @@ async function saveClinic(){
     await upsert('clinic_doctors', { clinic_id:cid,
       full_name:$('#f_doctor').value.trim(), kana:$('#f_doctorKana').value.trim(),
       full_name_en:$('#f_doctorEn').value.trim()||null,
+      home_address_en:$('#f_doctorAddrEn').value.trim()||null,
       home_address:$('#f_doctorAddr').value.trim(), personal_phone:$('#f_doctorTel').value.trim(),
       license_no:$('#f_licenseNo').value.trim()||null, licensed_on:$('#f_licenseDate').value||null,
       license_path:licensePath, license_name:licenseName,
