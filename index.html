@@ -154,6 +154,7 @@
   <button role="tab" data-view="clinics" aria-selected="false">医療機関</button>
   <button role="tab" data-view="cases" aria-selected="false">申請案件</button>
   <button role="tab" data-view="docs" aria-selected="false">書類の抜け</button>
+  <button role="tab" data-view="import" aria-selected="false" id="tabImport" hidden>一括取込</button>
   <button role="tab" data-view="users" aria-selected="false" id="tabUsers" hidden>利用者</button>
 </nav>
 
@@ -384,7 +385,8 @@ const PLACES = {};
 一宮:Ichinomiya,春日井:Kasugai,豊田:Toyota,四日市:Yokkaichi,
 心斎橋筋:Shinsaibashisuji,心斎橋:Shinsaibashi,難波:Namba,梅田:Umeda,本町:Honmachi,新町:Shimmachi,
 南船場:Minamisemba,名駅:Meieki,丸の内:Marunouchi,銀座:Ginza,六本木:Roppongi,青山:Aoyama,
-表参道:Omotesando,恵比寿:Ebisu,三宮:Sannomiya,河原町:Kawaramachi,天神:Tenjin,大名:Daimyo,海岸通:Kaigandori`
+表参道:Omotesando,恵比寿:Ebisu,三宮:Sannomiya,河原町:Kawaramachi,天神:Tenjin,大名:Daimyo,海岸通:Kaigandori,
+東京:Tokyo,虎ノ門:Toranomon,高槻:Takatsuki,坂出:Sakaide,寿:Kotobuki`
   .replace(/\s+/g,'').split(',').forEach(p=>{ const [a,b]=p.split(':'); if(a&&b) PLACES[a]=b; });
 
 const BUILDING_WORDS = [
@@ -395,7 +397,8 @@ const BUILDING_WORDS = [
 const NAME_WORDS = [
   ['医療法人社団','Medical Corp.'],['医療法人','Medical Corp.'],['クリニック','Clinic'],['医院','Clinic'],
   ['病院','Hospital'],['診療所','Clinic'],['歯科','Dental Clinic'],['美容皮膚科','Cosmetic Dermatology'],
-  ['皮膚科','Dermatology'],['美容外科','Cosmetic Surgery'],['形成外科','Plastic Surgery'],
+  ['皮膚科','Dermatology'],['皮フ科','Dermatology'],['皮ふ科','Dermatology'],
+  ['美容外科','Cosmetic Surgery'],['形成外科','Plastic Surgery'],
   ['整形外科','Orthopedic Clinic'],['内科','Internal Medicine'],['眼科','Eye Clinic'],
   ['耳鼻咽喉科','ENT Clinic'],['産婦人科','OB/GYN Clinic'],['外科','Surgery'],
   ['メディカル','Medical'],['ビューティー','Beauty'],['エステティック','Aesthetic'],['センター','Center']
@@ -630,6 +633,7 @@ async function enterApp(){
   $('#topbar').hidden = false; $('#tabs').hidden = false;
   $('#whoami').textContent = `${me.name}（${ROLES[me.role]}）`;
   $('#tabUsers').hidden = !isAdmin();
+  $('#tabImport').hidden = !canWrite();
   $('#lockbtn').hidden = !canWrite();
   clearInterval(refreshTimer);
   refreshTimer = setInterval(refreshToken, 45*60*1000);
@@ -725,7 +729,7 @@ function statusTag(s){
    ============================================================ */
 function render(){
   document.querySelectorAll('nav.tabs button').forEach(b=> b.setAttribute('aria-selected', b.dataset.view===view));
-  $('#main').innerHTML = ({home:viewHome, clinics:viewClinics, cases:viewCases, docs:viewDocs, users:viewUsers})[view]();
+  $('#main').innerHTML = ({home:viewHome, clinics:viewClinics, cases:viewCases, docs:viewDocs, users:viewUsers, import:viewImport})[view]();
   wire();
 }
 
@@ -1044,6 +1048,239 @@ function caseForm(k){
     <div class="field"><label for="f_note">メモ</label><textarea id="f_note">${esc(k.note)}</textarea></div>`;
 }
 
+/* ============================================================
+   CSV一括取込
+   申込フォームの書き出しを読み込んで、確認してからまとめて登録する。
+   ============================================================ */
+let imp = null;   // { head:[], rows:[[]], map:{}, prepared:[] }
+
+const IMPORT_FIELDS = [
+  { key:'name',     label:'クリニック名',     re:/クリニック名|医療機関/,               required:true },
+  { key:'doctor',   label:'医師氏名',         re:/氏名/,          not:/ローマ字/,        required:true },
+  { key:'doctorEn', label:'医師氏名（ローマ字）', re:/ローマ字/ },
+  { key:'addr',     label:'医師の自宅住所',   re:/住所/,                                 required:true },
+  { key:'tel',      label:'電話番号',         re:/TEL|電話/,                             required:true },
+  { key:'loginId',  label:'ユーザー名',       re:/ユーザー名/ },
+  { key:'licenseUrl', label:'医師免許証のリンク', re:/免許/ },
+  { key:'email',    label:'メールアドレス',   re:/メール/ }
+];
+
+/* CSVを読む（引用符・改行を含むセルに対応） */
+function parseCsv(text){
+  text = text.replace(/^﻿/,'');
+  const rows = []; let row = [], cell = '', q = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(q){
+      if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if(c === '"') q = true;
+    else if(c === ','){ row.push(cell); cell = ''; }
+    else if(c === '\r'){ /* skip */ }
+    else if(c === '\n'){ row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if(cell !== '' || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(v => (v||'').trim()));
+}
+
+/* 見出しから列を推測する。同じ見出しが複数あるので、中身が埋まっている列を選ぶ */
+function guessColumns(head, rows){
+  const filled = i => rows.reduce((n,r)=> n + ((r[i]||'').trim() ? 1 : 0), 0);
+  const map = {};
+  for(const f of IMPORT_FIELDS){
+    let best = -1, bestCount = -1;
+    head.forEach((h,i)=>{
+      if(!f.re.test(h)) return;
+      if(f.not && f.not.test(h)) return;
+      const n = filled(i);
+      if(n > bestCount){ bestCount = n; best = i; }
+    });
+    map[f.key] = best;
+  }
+  return map;
+}
+
+const normName = s => (s||'').replace(/[\s　]+/g,'');
+function tidyRomaji(s){
+  const v = (s||'').trim().replace(/\s+/g,' ');
+  if(!v) return '';
+  return v.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
+
+/* 取り込む形に整えて、重複や不足を判定する */
+function prepareImport(){
+  const m = imp.map, col = (r,k) => m[k] >= 0 ? (r[m[k]]||'').trim() : '';
+  const existing = new Set(db.clinics.map(c => normName(c.name)));
+  const rowsName = imp.rows.map(r => normName(col(r,'name').replace(/[\s　]+/g,' ').trim()));
+  const count = {}, lastIdx = {};
+  rowsName.forEach((k,i)=>{ if(!k) return; count[k] = (count[k]||0) + 1; lastIdx[k] = i; });
+
+  imp.prepared = imp.rows.map((r, idx) => {
+    const name = col(r,'name').replace(/[\s　]+/g,' ').trim();
+    const key = rowsName[idx];
+    const issues = [];
+    if(!name) issues.push('クリニック名なし');
+    if(!col(r,'doctor')) issues.push('医師氏名なし');
+    if(!col(r,'addr')) issues.push('住所なし');
+    if(!col(r,'doctorEn')) issues.push('ローマ字未入力');
+
+    let dup = '', include = !!name && !!col(r,'doctor');
+    if(key && existing.has(key)){ dup = '登録済み'; include = false; }
+    else if(key && count[key] > 1){
+      if(lastIdx[key] === idx){ dup = 'CSV内で重複（最新を選択）'; }
+      else { dup = 'CSV内で重複'; include = false; }
+    }
+
+    const nameEn = convertName(name);
+    return {
+      idx, name, dup, issues,
+      doctor: col(r,'doctor').replace(/[\s　]+/g,' ').trim(),
+      doctorEn: tidyRomaji(col(r,'doctorEn')),
+      addr: col(r,'addr').replace(/　/g,' ').trim(),
+      tel: col(r,'tel'),
+      telIntl: toIntlPhone(col(r,'tel')),
+      loginId: col(r,'loginId'),
+      licenseUrl: col(r,'licenseUrl'),
+      email: col(r,'email'),
+      nameEn,
+      nameEnClean: /[々぀-ヿ一-鿿]/.test(nameEn) ? '' : nameEn,  // 漢字が残るものは入れない
+      include
+    };
+  });
+}
+
+function viewImport(){
+  if(!imp){
+    return `
+    <div class="panel">
+      <h2>CSV一括取込</h2>
+      <div class="body">
+        <p style="margin-top:0">申込フォームの書き出し（CSV）を読み込んで、医療機関と申請名義人をまとめて登録します。</p>
+        <p class="tsub">読み込んだ時点では登録されません。列の対応と内容を確認してから、選んだ行だけを登録します。</p>
+        <input type="file" id="impFile" accept=".csv,text/csv">
+      </div>
+    </div>
+    <div class="panel">
+      <h2>取り込める項目</h2>
+      <div class="body tsub">${IMPORT_FIELDS.map(f=>f.label + (f.required?'（必須）':'')).join('　/　')}</div>
+    </div>`;
+  }
+
+  const p = imp.prepared;
+  const ok = p.filter(x=>x.include).length;
+  const dup = p.filter(x=>x.dup).length;
+  const noRomaji = p.filter(x=>x.issues.includes('ローマ字未入力')).length;
+
+  return `
+  <div class="board">
+    <div class="stack customs"><h3>読み込んだ行</h3><div class="n num">${p.length}</div></div>
+    <div class="stack"><h3>登録する行</h3><div class="n num">${ok}</div></div>
+    <div class="stack seal"><h3>重複</h3><div class="n num">${dup}</div></div>
+    <div class="stack warn"><h3>ローマ字未入力</h3><div class="n num">${noRomaji}</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>列の対応</h2>
+    <div class="body">
+      <div class="row3">
+        ${IMPORT_FIELDS.map(f=>`
+          <div class="field"><label for="map_${f.key}">${f.label}${f.required?'（必須）':''}</label>
+            <select id="map_${f.key}" data-mapkey="${f.key}">
+              <option value="-1">— 使わない —</option>
+              ${imp.head.map((h,i)=>`<option value="${i}" ${imp.map[f.key]===i?'selected':''}>${esc((h||'').slice(0,28)||('列'+(i+1)))}</option>`).join('')}
+            </select></div>`).join('')}
+      </div>
+      <p class="tsub" style="margin:8px 0 0">見出しが同じ列が複数あるCSVなので、中身が入っているほうを自動で選んでいます。違っていたら変えてください。</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>確認 <span class="count num">${p.length}件</span></h2>
+    <div class="toolbar">
+      <button class="btn" id="impRun">選んだ${ok}件を登録する</button>
+      <button class="btn sub" id="impAll">すべて選ぶ</button>
+      <button class="btn sub" id="impNone">選択を外す</button>
+      <button class="btn danger" id="impCancel">やめる</button>
+    </div>
+    <table>
+      <thead><tr><th style="width:34px"></th><th>クリニック名</th><th>医師</th><th>自宅住所</th><th>電話</th><th>免許証</th><th>状態</th></tr></thead>
+      <tbody>${p.map(x=>`
+        <tr>
+          <td><input type="checkbox" class="chk" data-inc="${x.idx}" ${x.include?'checked':''}></td>
+          <td><span class="tname">${esc(x.name||'—')}</span><br><span class="tsub">${esc(x.nameEn)}</span></td>
+          <td>${esc(x.doctor||'—')}<br><span class="tsub">${esc(x.doctorEn||'ローマ字なし')}</span></td>
+          <td class="tsub">${esc(x.addr.slice(0,34))}${x.addr.length>34?'…':''}</td>
+          <td class="num tsub">${esc(x.telIntl||x.tel||'—')}</td>
+          <td>${x.licenseUrl?'<span class="tag done">リンクあり</span>':'<span class="tag seal">なし</span>'}</td>
+          <td>${x.dup?`<span class="tag seal">${esc(x.dup)}</span>`:''}
+              ${x.issues.filter(i=>i!=='ローマ字未入力').map(i=>`<span class="tag warn">${i}</span>`).join(' ')}
+              ${x.issues.includes('ローマ字未入力')?'<span class="tag warn">ローマ字</span>':''}</td>
+        </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+async function runImport(){
+  const rows = imp.prepared.filter(x=>x.include);
+  if(!rows.length){ toast('登録する行が選ばれていません'); return; }
+  const btn = $('#impRun'); btn.disabled = true; btn.textContent = '登録中…';
+  try{
+    const stamp = new Date().toISOString();
+    const clinics = [], doctors = [];
+    for(const x of rows){
+      const id = crypto.randomUUID();
+      clinics.push({ id, name:x.name, name_en:x.nameEnClean||null, login_id:x.loginId||null,
+        contact:x.email||null, phone:null, address:'', pref:'',
+        source_note:'CSV一括取込', imported_at:stamp });      doctors.push({ clinic_id:id, full_name:x.doctor, full_name_en:x.doctorEn||null,
+        home_address:x.addr, personal_phone:x.tel||null, license_url:x.licenseUrl||null,
+        updated_at:stamp });
+    }
+    for(let i=0;i<clinics.length;i+=50){
+      await rest('clinics', { method:'POST', body:clinics.slice(i,i+50), headers:{ Prefer:'return=minimal' } });
+      btn.textContent = `登録中… ${Math.min(i+50, clinics.length)}/${clinics.length}`;
+    }
+    for(let i=0;i<doctors.length;i+=50){
+      await rest('clinic_doctors', { method:'POST', body:doctors.slice(i,i+50), headers:{ Prefer:'return=minimal' } });
+    }
+    imp = null;
+    await loadAll(); view = 'clinics'; render();
+    toast(`${rows.length}件を登録しました`);
+  }catch(e){
+    toast('登録できませんでした（' + e.message + '）');
+    btn.disabled = false; btn.textContent = '登録する';
+  }
+}
+
+function wireImport(){
+  $('#impFile')?.addEventListener('change', async e=>{
+    const f = e.target.files[0]; if(!f) return;
+    try{
+      const rows = parseCsv(await f.text());
+      if(rows.length < 2){ toast('中身が読み取れませんでした'); return; }
+      imp = { head: rows[0], rows: rows.slice(1) };
+      imp.map = guessColumns(imp.head, imp.rows);
+      prepareImport();
+      render();
+    }catch(err){ toast('読み込めませんでした（' + err.message + '）'); }
+    e.target.value = '';
+  });
+  document.querySelectorAll('[data-mapkey]').forEach(s=> s.addEventListener('change', ()=>{
+    imp.map[s.dataset.mapkey] = parseInt(s.value, 10);
+    prepareImport(); render();
+  }));
+  document.querySelectorAll('[data-inc]').forEach(cb=> cb.addEventListener('change', ()=>{
+    const x = imp.prepared.find(p=>p.idx === +cb.dataset.inc);
+    if(x) x.include = cb.checked;
+    const n = imp.prepared.filter(p=>p.include).length;
+    const b = $('#impRun'); if(b) b.textContent = `選んだ${n}件を登録する`;
+  }));
+  $('#impAll')?.addEventListener('click', ()=>{ imp.prepared.forEach(p=>{ if(p.name && p.doctor) p.include = true; }); render(); });
+  $('#impNone')?.addEventListener('click', ()=>{ imp.prepared.forEach(p=> p.include = false); render(); });
+  $('#impCancel')?.addEventListener('click', ()=>{ imp = null; render(); });
+  $('#impRun')?.addEventListener('click', runImport);
+}
+
 /* ---------- 英語表記の変換と、辞書の学習 ---------- */
 function runConversion(){
   const kana   = $('#f_doctorKana').value.trim();
@@ -1111,6 +1348,7 @@ function wire(){
     render(); const n=$('#q'); if(n){ n.focus(); n.setSelectionRange(p,p); } });
   $('#fstatus')?.addEventListener('change', e=>{ filterStatus=e.target.value; render(); });
   $('#exportCsv')?.addEventListener('click', exportCsv);
+  if(view === 'import') wireImport();
 
   document.querySelectorAll('[data-role]').forEach(b=> b.addEventListener('click', async ()=>{
     const u = staffList.find(x=>x.id===b.dataset.role);
