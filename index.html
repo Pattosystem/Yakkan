@@ -1,6 +1,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>医薬品輸入情報システム管理</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F4E79">
 <style>
   :root{
     --paper:#F1F3F5; --sheet:#FFFFFF; --ink:#15202B; --muted:#5D6D7B;
@@ -330,6 +335,221 @@ async function openText(iv, ct){
   return dec.decode(await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64.from(iv) }, vaultKey, b64.from(ct)));
 }
 
+/* ============================================================
+   日本語 → 英語表記の変換
+   完全自動にはできない（漢字の地名は読みが一意に決まらない）ので、
+   分かるところまで機械的に変換し、残った語は画面に出して手で入れてもらう。
+   入れてもらった読みは辞書に覚えて、次回から自動で使う。
+   ============================================================ */
+const PREFS = {
+  '北海道':'Hokkaido','青森県':'Aomori','岩手県':'Iwate','宮城県':'Miyagi','秋田県':'Akita','山形県':'Yamagata',
+  '福島県':'Fukushima','茨城県':'Ibaraki','栃木県':'Tochigi','群馬県':'Gunma','埼玉県':'Saitama','千葉県':'Chiba',
+  '東京都':'Tokyo','神奈川県':'Kanagawa','新潟県':'Niigata','富山県':'Toyama','石川県':'Ishikawa','福井県':'Fukui',
+  '山梨県':'Yamanashi','長野県':'Nagano','岐阜県':'Gifu','静岡県':'Shizuoka','愛知県':'Aichi','三重県':'Mie',
+  '滋賀県':'Shiga','京都府':'Kyoto','大阪府':'Osaka','兵庫県':'Hyogo','奈良県':'Nara','和歌山県':'Wakayama',
+  '鳥取県':'Tottori','島根県':'Shimane','岡山県':'Okayama','広島県':'Hiroshima','山口県':'Yamaguchi',
+  '徳島県':'Tokushima','香川県':'Kagawa','愛媛県':'Ehime','高知県':'Kochi','福岡県':'Fukuoka','佐賀県':'Saga',
+  '長崎県':'Nagasaki','熊本県':'Kumamoto','大分県':'Oita','宮崎県':'Miyazaki','鹿児島県':'Kagoshima','沖縄県':'Okinawa'
+};
+
+const PLACES = {};
+`千代田:Chiyoda,中央:Chuo,港:Minato,新宿:Shinjuku,文京:Bunkyo,台東:Taito,墨田:Sumida,江東:Koto,
+品川:Shinagawa,目黒:Meguro,大田:Ota,世田谷:Setagaya,渋谷:Shibuya,中野:Nakano,杉並:Suginami,豊島:Toshima,
+北:Kita,荒川:Arakawa,板橋:Itabashi,練馬:Nerima,足立:Adachi,葛飾:Katsushika,江戸川:Edogawa,
+都島:Miyakojima,福島:Fukushima,此花:Konohana,西:Nishi,大正:Taisho,天王寺:Tennoji,浪速:Naniwa,
+西淀川:Nishiyodogawa,淀川:Yodogawa,東淀川:Higashiyodogawa,東成:Higashinari,生野:Ikuno,旭:Asahi,城東:Joto,
+鶴見:Tsurumi,阿倍野:Abeno,住之江:Suminoe,住吉:Sumiyoshi,東住吉:Higashisumiyoshi,平野:Hirano,西成:Nishinari,
+千種:Chikusa,東:Higashi,中村:Nakamura,中:Naka,昭和:Showa,瑞穂:Mizuho,熱田:Atsuta,中川:Nakagawa,南:Minami,
+守山:Moriyama,緑:Midori,名東:Meito,天白:Tempaku,
+神奈川:Kanagawa,港南:Konan,保土ケ谷:Hodogaya,磯子:Isogo,金沢:Kanazawa,港北:Kohoku,青葉:Aoba,都筑:Tsuzuki,
+戸塚:Totsuka,栄:Sakae,泉:Izumi,瀬谷:Seya,幸:Saiwai,中原:Nakahara,高津:Takatsu,宮前:Miyamae,多摩:Tama,麻生:Asao,
+東灘:Higashinada,灘:Nada,兵庫:Hyogo,長田:Nagata,須磨:Suma,垂水:Tarumi,
+上京:Kamigyo,左京:Sakyo,中京:Nakagyo,東山:Higashiyama,下京:Shimogyo,右京:Ukyo,伏見:Fushimi,山科:Yamashina,西京:Nishikyo,
+博多:Hakata,城南:Jonan,早良:Sawara,白石:Shiroishi,豊平:Toyohira,厚別:Atsubetsu,手稲:Teine,清田:Kiyota,
+宮城野:Miyagino,若林:Wakabayashi,太白:Taihaku,大宮:Omiya,見沼:Minuma,桜:Sakura,浦和:Urawa,岩槻:Iwatsuki,
+花見川:Hanamigawa,稲毛:Inage,若葉:Wakaba,美浜:Mihama,江南:Konan,秋葉:Akiha,西蒲:Nishikan,
+葵:Aoi,駿河:Suruga,清水:Shimizu,浜名:Hamana,天竜:Tenryu,美原:Mihara,
+安佐南:Asaminami,安佐北:Asakita,安芸:Aki,佐伯:Saeki,門司:Moji,若松:Wakamatsu,戸畑:Tobata,
+小倉北:Kokurakita,小倉南:Kokuraminami,八幡東:Yahatahigashi,八幡西:Yahatanishi,
+札幌:Sapporo,仙台:Sendai,さいたま:Saitama,千葉:Chiba,横浜:Yokohama,川崎:Kawasaki,相模原:Sagamihara,
+新潟:Niigata,静岡:Shizuoka,浜松:Hamamatsu,名古屋:Nagoya,京都:Kyoto,大阪:Osaka,堺:Sakai,神戸:Kobe,
+岡山:Okayama,広島:Hiroshima,北九州:Kitakyushu,福岡:Fukuoka,熊本:Kumamoto,那覇:Naha,鹿児島:Kagoshima,
+宮崎:Miyazaki,大分:Oita,長崎:Nagasaki,佐賀:Saga,高知:Kochi,松山:Matsuyama,高松:Takamatsu,徳島:Tokushima,
+山口:Yamaguchi,鳥取:Tottori,松江:Matsue,和歌山:Wakayama,奈良:Nara,大津:Otsu,岐阜:Gifu,長野:Nagano,
+甲府:Kofu,福井:Fukui,富山:Toyama,前橋:Maebashi,宇都宮:Utsunomiya,水戸:Mito,山形:Yamagata,
+秋田:Akita,盛岡:Morioka,青森:Aomori,西宮:Nishinomiya,尼崎:Amagasaki,姫路:Himeji,東大阪:Higashiosaka,
+豊中:Toyonaka,吹田:Suita,枚方:Hirakata,八尾:Yao,茨木:Ibaraki,寝屋川:Neyagawa,岸和田:Kishiwada,
+船橋:Funabashi,柏:Kashiwa,市川:Ichikawa,松戸:Matsudo,川口:Kawaguchi,所沢:Tokorozawa,越谷:Koshigaya,
+八王子:Hachioji,町田:Machida,藤沢:Fujisawa,横須賀:Yokosuka,厚木:Atsugi,豊橋:Toyohashi,岡崎:Okazaki,
+一宮:Ichinomiya,春日井:Kasugai,豊田:Toyota,四日市:Yokkaichi,
+心斎橋筋:Shinsaibashisuji,心斎橋:Shinsaibashi,難波:Namba,梅田:Umeda,本町:Honmachi,新町:Shimmachi,
+南船場:Minamisemba,名駅:Meieki,丸の内:Marunouchi,銀座:Ginza,六本木:Roppongi,青山:Aoyama,
+表参道:Omotesando,恵比寿:Ebisu,三宮:Sannomiya,河原町:Kawaramachi,天神:Tenjin,大名:Daimyo,海岸通:Kaigandori`
+  .replace(/\s+/g,'').split(',').forEach(p=>{ const [a,b]=p.split(':'); if(a&&b) PLACES[a]=b; });
+
+const BUILDING_WORDS = [
+  ['ビルディング','Bldg.'],['ビル','Bldg.'],['タワー','Tower'],['マンション','Mansion'],
+  ['ハイツ','Heights'],['コーポ','Corp.'],['プラザ','Plaza'],['センター','Center'],
+  ['メディカル','Medical'],['クリニック','Clinic'],['モール','Mall'],['館','Bldg.'],['棟','Bldg.']
+];
+const NAME_WORDS = [
+  ['医療法人社団','Medical Corp.'],['医療法人','Medical Corp.'],['クリニック','Clinic'],['医院','Clinic'],
+  ['病院','Hospital'],['診療所','Clinic'],['歯科','Dental Clinic'],['美容皮膚科','Cosmetic Dermatology'],
+  ['皮膚科','Dermatology'],['美容外科','Cosmetic Surgery'],['形成外科','Plastic Surgery'],
+  ['整形外科','Orthopedic Clinic'],['内科','Internal Medicine'],['眼科','Eye Clinic'],
+  ['耳鼻咽喉科','ENT Clinic'],['産婦人科','OB/GYN Clinic'],['外科','Surgery'],
+  ['メディカル','Medical'],['ビューティー','Beauty'],['エステティック','Aesthetic'],['センター','Center']
+];
+
+let USER_DICT = {};      // DBから読み込む学習辞書
+let pendingDict = {};    // 保存時にDBへ書く新しい対応
+const lookupJa = ja => USER_DICT[ja] || PLACES[ja] || null;
+
+const zen2han = s => s.replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+                      .replace(/[－−―‐]/g,'-').replace(/　/g,' ');
+const titleCase = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+/* 仮名 → ローマ字（ヘボン式・旅券表記に寄せる） */
+const KANA = {
+  'キャ':'kya','キュ':'kyu','キョ':'kyo','シャ':'sha','シュ':'shu','ショ':'sho','チャ':'cha','チュ':'chu','チョ':'cho',
+  'ニャ':'nya','ニュ':'nyu','ニョ':'nyo','ヒャ':'hya','ヒュ':'hyu','ヒョ':'hyo','ミャ':'mya','ミュ':'myu','ミョ':'myo',
+  'リャ':'rya','リュ':'ryu','リョ':'ryo','ギャ':'gya','ギュ':'gyu','ギョ':'gyo','ジャ':'ja','ジュ':'ju','ジョ':'jo',
+  'ビャ':'bya','ビュ':'byu','ビョ':'byo','ピャ':'pya','ピュ':'pyu','ピョ':'pyo','ヂャ':'ja','ヂュ':'ju','ヂョ':'jo',
+  'ファ':'fa','フィ':'fi','フェ':'fe','フォ':'fo','ヴァ':'va','ヴィ':'vi','ヴェ':'ve','ヴォ':'vo',
+  'ティ':'ti','ディ':'di','シェ':'she','ジェ':'je','チェ':'che',
+  'ア':'a','イ':'i','ウ':'u','エ':'e','オ':'o','カ':'ka','キ':'ki','ク':'ku','ケ':'ke','コ':'ko',
+  'サ':'sa','シ':'shi','ス':'su','セ':'se','ソ':'so','タ':'ta','チ':'chi','ツ':'tsu','テ':'te','ト':'to',
+  'ナ':'na','ニ':'ni','ヌ':'nu','ネ':'ne','ノ':'no','ハ':'ha','ヒ':'hi','フ':'fu','ヘ':'he','ホ':'ho',
+  'マ':'ma','ミ':'mi','ム':'mu','メ':'me','モ':'mo','ヤ':'ya','ユ':'yu','ヨ':'yo',
+  'ラ':'ra','リ':'ri','ル':'ru','レ':'re','ロ':'ro','ワ':'wa','ヲ':'o','ン':'n',
+  'ガ':'ga','ギ':'gi','グ':'gu','ゲ':'ge','ゴ':'go','ザ':'za','ジ':'ji','ズ':'zu','ゼ':'ze','ゾ':'zo',
+  'ダ':'da','ヂ':'ji','ヅ':'zu','デ':'de','ド':'do','バ':'ba','ビ':'bi','ブ':'bu','ベ':'be','ボ':'bo',
+  'パ':'pa','ピ':'pi','プ':'pu','ペ':'pe','ポ':'po','ヴ':'v',
+  'ァ':'a','ィ':'i','ゥ':'u','ェ':'e','ォ':'o','ャ':'ya','ュ':'yu','ョ':'yo'
+};
+function kanaToRomaji(src){
+  const s = (src||'').replace(/[ぁ-ゖ]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60));
+  let out = '', i = 0;
+  while(i < s.length){
+    const two = s.slice(i, i+2);
+    if(KANA[two]){ out += KANA[two]; i += 2; continue; }
+    const one = s[i];
+    if(one === 'ッ'){                                     // 促音
+      const nx = KANA[s.slice(i+1,i+3)] || KANA[s[i+1]] || '';
+      out += nx.startsWith('ch') ? 't' : (nx[0] || ''); i++; continue;
+    }
+    if(one === 'ー'){ i++; continue; }                     // 長音は伸ばさない
+    if(KANA[one]){ out += KANA[one]; i++; continue; }
+    out += one; i++;
+  }
+  // 旅券式の長音処理：リュウイチ→Ryuichi、コウタ→Kota（イノウエ等は残す）
+  out = out.replace(/uu/g,'u').replace(/ou(?![aeiou])/g,'o');
+  return out;
+}
+const isKatakana = s => /^[゠-ヿ぀-ゟ]+$/.test(s);   // 仮名は読みが確定するので機械的に変換できる
+function romanizeRun(run){
+  const hit = lookupJa(run);
+  if(hit) return hit;
+  if(isKatakana(run)) return titleCase(kanaToRomaji(run));
+  return run;                                             // 漢字で辞書に無いものはそのまま残す
+}
+// 漢字のまとまりと仮名のまとまりは別々に扱う（心斎橋メディカル → 心斎橋 ＋ メディカル）
+const CJK_RUN = /[々一-鿿]+|[゠-ヿ]+|[぀-ゟ]+/g;
+const collectUnknown = t => [...new Set((t||'').match(/[々぀-ヿ一-鿿]+/g) || [])];
+
+/* 医師氏名：フリガナからローマ字にする */
+function nameToEnglish(kana){
+  if(!kana) return '';
+  return kana.trim().split(/[\s・]+/).filter(Boolean).map(t=>titleCase(kanaToRomaji(t))).join(' ');
+}
+
+/* 電話番号 → 国際表記 */
+const AREA2 = new Set(['11','17','18','19','22','23','24','25','26','27','28','29','42','43','44','45','46','47','48','49',
+  '52','53','54','55','58','59','72','73','74','75','76','77','78','79','82','83','84','86','87','88','89','92','93','95','96','97','98','99']);
+function toIntlPhone(src){
+  const raw = (src||'').trim();
+  const d = raw.replace(/[^\d]/g,'');
+  if(!d) return '';
+  if(!d.startsWith('0')) return '+81 ' + d;
+  // 元の番号に区切りがあるなら、それをそのまま活かす（市外局番の桁数は地域でばらつくため）
+  if(/^0[\d]*[-\s][\d\-\s]+$/.test(raw)){
+    const parts = raw.replace(/[()]/g,'').split(/[-\s]+/).filter(Boolean);
+    if(parts.length >= 2) return '+81 ' + [parts[0].replace(/^0/,''), ...parts.slice(1)].join('-');
+  }
+  const rest = d.slice(1);
+  if(/^(70|80|90|50)/.test(rest) && rest.length === 10)
+    return `+81 ${rest.slice(0,2)}-${rest.slice(2,6)}-${rest.slice(6)}`;
+  if(/^(120|800)/.test(rest)) return `+81 ${rest.slice(0,3)}-${rest.slice(3)}`;
+  let alen = 3;
+  if(/^[36]/.test(rest)) alen = 1;
+  else if(AREA2.has(rest.slice(0,2))) alen = 2;
+  const area = rest.slice(0, alen), sub = rest.slice(-4), mid = rest.slice(alen, rest.length-4);
+  return mid ? `+81 ${area}-${mid}-${sub}` : `+81 ${area}-${sub}`;
+}
+
+/* 医療機関名 */
+function convertName(ja){
+  if(!ja) return '';
+  let s = zen2han(ja).trim();
+  for(const [k,v] of NAME_WORDS) s = s.split(k).join(' '+v+' ');
+  s = s.replace(CJK_RUN, run => ' ' + romanizeRun(run) + ' ');
+  return s.replace(/\s+/g,' ').trim();
+}
+
+/* 住所：日本式（広い順）を英語式（狭い順）に並べ替える */
+function convertAddress(ja){
+  if(!ja) return '';
+  let s = zen2han(ja).trim();
+
+  let postal = '';
+  s = s.replace(/〒?\s*(\d{3})\s*-?\s*(\d{4})/, (m,a,b)=>{ postal = `${a}-${b}`; return ''; }).trim();
+
+  let pref = '', city = '', ward = '', gun = '';
+  for(const k of Object.keys(PREFS)){
+    if(s.startsWith(k)){ pref = PREFS[k]; s = s.slice(k.length); break; }
+  }
+  let m = s.match(/^(.+?)市/);
+  if(m){ city = (lookupJa(m[1]) || m[1]) + '-shi'; s = s.slice(m[0].length); }
+  else {
+    m = s.match(/^(.+?)郡/);
+    if(m){
+      gun = (lookupJa(m[1]) || m[1]) + '-gun'; s = s.slice(m[0].length);
+      const t = s.match(/^(.+?)([町村])/);
+      if(t){ city = (lookupJa(t[1]) || t[1]) + (t[2]==='町' ? '-cho' : '-mura'); s = s.slice(t[0].length); }
+    }
+  }
+  m = s.match(/^(.+?)区/);
+  if(m){ ward = (lookupJa(m[1]) || m[1]) + '-ku'; s = s.slice(m[0].length); }
+
+  s = s.replace(/丁目/g,'-').replace(/番地|番/g,'-').replace(/号室/g,' Rm.').replace(/号/g,'');
+  const di = s.search(/\d/);
+  const town = (di >= 0 ? s.slice(0, di) : s).trim();
+  const rest = di >= 0 ? s.slice(di) : '';
+  const townEn = town ? romanizeRun(town) : '';
+
+  const bm = rest.match(/^[\d\-\s]+/);
+  const banchi = bm ? bm[0].replace(/\s+/g,'').replace(/-+$/,'').replace(/-{2,}/g,'-') : '';
+  let building = (bm ? rest.slice(bm[0].length) : rest).trim();
+  if(building){
+    for(const [k,v] of BUILDING_WORDS) building = building.split(k).join(' '+v+' ');
+    building = building.replace(/(\d+)\s*階/g,'$1F').replace(/[()（）]/g,' ');
+    building = building.replace(CJK_RUN, run => ' ' + romanizeRun(run) + ' ');
+    building = building.replace(/\s+/g,' ').trim();
+  }
+
+  const parts = [];
+  if(building) parts.push(building);
+  const line = [banchi, townEn].filter(Boolean).join(' ').trim();
+  if(line) parts.push(line);
+  if(ward) parts.push(ward);
+  if(city) parts.push(city);
+  if(gun)  parts.push(gun);
+  const tail = [pref, postal].filter(Boolean).join(' ');
+  if(tail) parts.push(tail);
+  parts.push('Japan');
+  return parts.join(', ').replace(/\s+/g,' ').replace(/ ,/g,',');
+}
+
 /* ---------- 日付 ---------- */
 const today = new Date(); today.setHours(0,0,0,0);
 const daysUntil = d => d ? Math.round((new Date(d+'T00:00:00') - today) / 86400000) : null;
@@ -459,6 +679,8 @@ async function loadAll(){
       doctor:d.full_name||'', doctorKana:d.kana||'', doctorAddr:d.home_address||'', doctorTel:d.personal_phone||'',
       licenseNo:d.license_no||'', licenseDate:d.licensed_on||'',
       license: d.license_path ? { path:d.license_path, name:d.license_name||'免許証' } : null,
+      doctorEn: d.full_name_en||'',
+      nameEn: c.name_en||'', addrEn: c.address_en||'', telIntl: c.phone_intl||'',
       hasDoctorRow: !!d.clinic_id,
       proxyId:p.id||null, proxyFrom:p.granted_on||'', proxyTo:p.expires_on||'',
       cred: cr && cr.ct_password ? { ct:cr.ct_password, iv:cr.iv } : null };
@@ -480,6 +702,10 @@ async function loadAll(){
   if(canWrite()){
     try{ const v = await sel('vault_meta?id=eq.1&select=*'); vaultMeta = (v&&v[0])||null; }catch(e){ vaultMeta = null; }
   }
+  try{
+    const rows = await sel('romaji_dict?select=ja,en');
+    USER_DICT = {}; (rows||[]).forEach(r=>{ USER_DICT[r.ja] = r.en; });
+  }catch(e){ USER_DICT = {}; }
   if(isAdmin()){
     try{ staffList = await sel('staff?select=id,name,role&order=name'); }catch(e){ staffList = []; }
   }
@@ -702,7 +928,8 @@ $('#attPick').addEventListener('change', e=>{
 function clinicForm(c){
   const isNew = !c;
   c = c || { id:null, name:'', code:'', pref:'', addr:'', tel:'', doctor:'', doctorKana:'', doctorAddr:'', doctorTel:'',
-             licenseNo:'', licenseDate:'', license:null, loginId:'', mfa:'', proxyFrom:'', proxyTo:'', contact:'', note:'' };
+             licenseNo:'', licenseDate:'', license:null, loginId:'', mfa:'', proxyFrom:'', proxyTo:'', contact:'', note:'',
+             nameEn:'', addrEn:'', telIntl:'', doctorEn:'' };
   return `
     <input type="hidden" id="f_id" value="${c.id||''}">
     <div class="row2">
@@ -730,6 +957,22 @@ function clinicForm(c){
       </div>
       <div class="field"><label>医師免許証（PDFまたは画像・5MBまで）</label>
         <div class="attbox">${attachHtml('license', c.license)}</div></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>英語表記（薬監申請用）</legend>
+      <p class="tsub" style="margin:0 0 10px">
+        日本語の欄から自動で作ります。地名の読みは機械では確定できないので、違っていたら直してください。
+        直した読みは覚えて、次回から自動で使います。
+        <button type="button" class="btn sub" id="convAll" style="margin-left:6px">日本語から変換する</button>
+      </p>
+      <div class="field"><label for="f_nameEn">医療機関名（英語）</label><input id="f_nameEn" value="${esc(c.nameEn)}"></div>
+      <div class="field"><label for="f_addrEn">医療機関の住所（英語）</label><input id="f_addrEn" value="${esc(c.addrEn)}"></div>
+      <div class="row2">
+        <div class="field"><label for="f_telIntl">電話番号（国際表記）</label><input id="f_telIntl" class="num" value="${esc(c.telIntl)}"></div>
+        <div class="field"><label for="f_doctorEn">医師氏名（英語）</label><input id="f_doctorEn" value="${esc(c.doctorEn)}"></div>
+      </div>
+      <div id="dictBox"></div>
     </fieldset>
 
     <fieldset>
@@ -801,8 +1044,46 @@ function caseForm(k){
     <div class="field"><label for="f_note">メモ</label><textarea id="f_note">${esc(k.note)}</textarea></div>`;
 }
 
+/* ---------- 英語表記の変換と、辞書の学習 ---------- */
+function runConversion(){
+  const kana   = $('#f_doctorKana').value.trim();
+  const doctor = $('#f_doctor').value.trim();
+  $('#f_nameEn').value  = convertName($('#f_name').value);
+  $('#f_addrEn').value  = convertAddress($('#f_addr').value);
+  $('#f_telIntl').value = toIntlPhone($('#f_tel').value);
+  $('#f_doctorEn').value = kana ? nameToEnglish(kana)
+                         : (doctor && isKatakana(doctor) ? nameToEnglish(doctor) : $('#f_doctorEn').value);
+  renderDictBox();
+}
+function renderDictBox(){
+  const box = $('#dictBox'); if(!box) return;
+  const unknown = collectUnknown([$('#f_nameEn').value, $('#f_addrEn').value, $('#f_doctorEn').value].join(' '));
+  const needKana = !$('#f_doctorKana').value.trim() && !!$('#f_doctor').value.trim() && !$('#f_doctorEn').value.trim();
+  if(!unknown.length && !needKana){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="attbox">
+    ${needKana ? `<p class="tsub" style="margin:0 0 8px;color:var(--seal)">医師氏名の英語はフリガナから作ります。フリガナを入れてからもう一度変換してください。</p>` : ''}
+    ${unknown.length ? `<p class="tsub" style="margin:0 0 8px">読み方が分からなかった語です。英語を入れて「反映する」を押すと、上の欄に入り、次回から自動で使われます。</p>
+      ${unknown.map((u,i)=>`<div class="field" style="margin-bottom:8px">
+        <label for="ud_${i}">${esc(u)}</label>
+        <input id="ud_${i}" data-ja="${esc(u)}" placeholder="ローマ字で（例：Jingumae）"></div>`).join('')}
+      <button type="button" class="btn sub" id="applyDict">反映する</button>` : ''}
+  </div>`;
+  $('#applyDict')?.addEventListener('click', applyDict);
+}
+function applyDict(){
+  let n = 0;
+  document.querySelectorAll('#dictBox input[data-ja]').forEach(inp=>{
+    const en = inp.value.trim(); if(!en) return;
+    USER_DICT[inp.dataset.ja] = en; pendingDict[inp.dataset.ja] = en; n++;
+  });
+  if(!n){ toast('英語を入れてください'); return; }
+  runConversion();
+  toast('反映しました。保存すると辞書に残ります');
+}
+
 function openRecord(target){
   resetAttach();
+  pendingDict = {};
   const [kind,id] = target.split(':');
   if(kind==='clinic'){
     const c = id==='new' ? null : clinicOf(id);
@@ -867,6 +1148,8 @@ function wireDrawer(){
   $('#saveCase')?.addEventListener('click', saveCase);
   $('#delCase')?.addEventListener('click', deleteCase);
   $('#revealPw')?.addEventListener('click', revealPw);
+  $('#convAll')?.addEventListener('click', runConversion);
+  if($('#dictBox')) renderDictBox();
 
   if(!canWrite()){
     $('#drawerBody').querySelectorAll('input,select,textarea').forEach(el=> el.disabled = true);
@@ -901,6 +1184,8 @@ async function saveClinic(){
   try{
     const row = { name, code:$('#f_code').value.trim()||null, pref:$('#f_pref').value.trim(),
       address:$('#f_addr').value.trim(), phone:$('#f_tel').value.trim(),
+      name_en:$('#f_nameEn').value.trim()||null, address_en:$('#f_addrEn').value.trim()||null,
+      phone_intl:$('#f_telIntl').value.trim()||null,
       contact:$('#f_contact').value.trim(), login_id:$('#f_loginId').value.trim(),
       mfa_route:$('#f_mfa').value.trim(), note:$('#f_note').value, updated_at:new Date().toISOString() };
     let saved;
@@ -922,6 +1207,7 @@ async function saveClinic(){
 
     await upsert('clinic_doctors', { clinic_id:cid,
       full_name:$('#f_doctor').value.trim(), kana:$('#f_doctorKana').value.trim(),
+      full_name_en:$('#f_doctorEn').value.trim()||null,
       home_address:$('#f_doctorAddr').value.trim(), personal_phone:$('#f_doctorTel').value.trim(),
       license_no:$('#f_licenseNo').value.trim()||null, licensed_on:$('#f_licenseDate').value||null,
       license_path:licensePath, license_name:licenseName,
@@ -943,6 +1229,13 @@ async function saveClinic(){
       await upsert('clinic_credentials', { clinic_id:cid, ct_password:s.ct, iv:s.iv,
         rotated_at:new Date().toISOString().slice(0,10), updated_by:me.id, updated_at:new Date().toISOString() });
       insert('access_log', { actor:me.id, action:'credential.update', target:cid }, 'return=minimal').catch(()=>{});
+    }
+
+    // 教えてもらった読みを辞書に残す
+    const dictRows = Object.entries(pendingDict).map(([ja,en])=>({ ja, en, created_by:me.id }));
+    if(dictRows.length){
+      try{ await upsert('romaji_dict', dictRows); pendingDict = {}; }
+      catch(e){ toast('辞書の保存だけ失敗しました（' + e.message + '）'); }
     }
 
     await loadAll(); closeDrawer(); render(); toast('保存しました');
